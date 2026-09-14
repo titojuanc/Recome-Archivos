@@ -1,0 +1,29 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "reporte.listo",
+  "description": "Evento publicado por este worker hacia api-general cuando un reporte terminó de generarse. Este schema es una interpretación de trabajo de este repo; la fuente única de verdad vive documentada en api-general y debe sincronizarse con ella antes de implementar (Principio III de la constitution).",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["solicitud_id", "referencia_archivo", "estado", "generado_en"],
+  "properties": {
+    "solicitud_id": {
+      "type": "string",
+      "format": "uuid",
+      "description": "Igual al solicitud_id recibido en reporte.generar, para que api-general correlacione la respuesta."
+    },
+    "referencia_archivo": {
+      "type": "string",
+      "description": "Referencia lógica al archivo generado (bucket/key o identificador interno). La resolución a una URL de descarga es responsabilidad de la feature 002-minio-storage / 003-webserver-archivos."
+    },
+    "estado": {
+      "type": "string",
+      "enum": ["generado", "vacio"],
+      "description": "generado: el reporte tiene datos en el rango solicitado. vacio: el anuncio existe pero no tiene impresiones/clicks en el rango."
+    },
+    "generado_en": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Timestamp UTC de finalización de la generación del reporte."
+    }
+  }
+}
