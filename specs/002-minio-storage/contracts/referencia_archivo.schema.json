@@ -1,0 +1,22 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "referencia_archivo",
+  "description": "Estructura lógica del campo referencia_archivo dentro del payload del evento reporte.listo (contrato definido en 001-worker-reportes/contracts/reporte.listo.schema.json). Esta feature (002-minio-storage) produce el valor concreto de este campo; no redefine el evento en sí.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["bucket", "key"],
+  "properties": {
+    "bucket": {
+      "type": "string",
+      "description": "Nombre del bucket de MinIO exclusivo de este repo donde se persistió el objeto."
+    },
+    "key": {
+      "type": "string",
+      "description": "Key determinística del objeto dentro del bucket, con el formato reportes/{anuncio_id}/{solicitud_id}.xlsx"
+    },
+    "etag": {
+      "type": "string",
+      "description": "ETag devuelto por MinIO tras la subida, usado para verificación de integridad (FR-004). Opcional para consumidores externos del evento."
+    }
+  }
+}
