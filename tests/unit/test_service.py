@@ -86,6 +86,38 @@ def test_procesar_solicitud_marca_estado_vacio_sin_eventos(solicitud_valida):
     assert reporte.estado == EstadoReporte.VACIO
 
 
+# --- 002-minio-storage: integracion con persistencia ---
+
+
+def test_procesar_solicitud_usa_persistencia_para_referencia_archivo(solicitud_valida):
+    from src.worker.reportes.service import procesar_solicitud
+    from src.worker.storage.persistencia import ReferenciaDeArchivo
+
+    repo = MagicMock(obtener_eventos_anuncio=MagicMock(return_value=iter([MagicMock()])))
+    excel_builder = MagicMock(construir_reporte=MagicMock(return_value=b"excel-bytes"))
+    publisher = MagicMock()
+    persistencia = MagicMock(
+        subir_reporte=MagicMock(
+            return_value=ReferenciaDeArchivo(
+                bucket="reportes", key="reportes/anuncio-123/sid.xlsx", etag="abc123"
+            )
+        )
+    )
+
+    procesar_solicitud(
+        solicitud_valida,
+        repository=repo,
+        excel_builder=excel_builder,
+        publisher=publisher,
+        persistencia=persistencia,
+    )
+
+    persistencia.subir_reporte.assert_called_once()
+    args, kwargs = publisher.publicar_reporte_listo.call_args
+    reporte = kwargs.get("reporte") or args[0]
+    assert reporte.referencia_archivo == "reportes/reportes/anuncio-123/sid.xlsx"
+
+
 # --- User Story 3: idempotencia / recuperacion ante fallos transitorios ---
 
 

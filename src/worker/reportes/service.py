@@ -21,6 +21,7 @@ def procesar_solicitud(
     excel_builder,
     publisher,
     idempotencia=None,
+    persistencia=None,
 ) -> ReporteGenerado | None:
     """Orquesta el flujo completo para una `SolicitudDeReporte` ya validada.
 
@@ -66,16 +67,26 @@ def procesar_solicitud(
             )
         )
 
-        excel_builder.construir_reporte(eventos)
+        archivo_excel = excel_builder.construir_reporte(eventos)
 
         estado = EstadoReporte.GENERADO if eventos else EstadoReporte.VACIO
         logger.info("solicitud_id=%s reporte generado estado=%s", sid, estado.value)
 
+        if persistencia is not None:
+            referencia = persistencia.subir_reporte(
+                solicitud.anuncio_id, str(sid), archivo_excel
+            )
+            referencia_archivo = f"{referencia.bucket}/{referencia.key}"
+            logger.info(
+                "solicitud_id=%s reporte persistido en %s", sid, referencia_archivo
+            )
+        else:
+            # Placeholder hasta que 002-minio-storage este completamente integrado.
+            referencia_archivo = f"reportes/{solicitud.anuncio_id}/{sid}.xlsx"
+
         reporte = ReporteGenerado(
             solicitud_id=sid,
-            # La referencia real al objeto persistido la resuelve 002-minio-storage;
-            # aqui se usa un placeholder determinista hasta esa integracion.
-            referencia_archivo=f"reportes/{solicitud.anuncio_id}/{sid}.xlsx",
+            referencia_archivo=referencia_archivo,
             estado=estado,
             generado_en=datetime.now(timezone.utc),
         )
