@@ -1,0 +1,43 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "auth_endpoint_contract",
+  "description": "Contrato del subrequest interno GET /auth usado por Nginx (ngx_http_auth_request_module) para autorizar el acceso a un reporte antes de servirlo desde MinIO. No es un endpoint público: solo Nginx lo invoca, reenviando headers derivados de la solicitud original del usuario.",
+  "type": "object",
+  "properties": {
+    "request": {
+      "type": "object",
+      "description": "Headers que Nginx debe reenviar al invocar /auth (via auth_request_set / proxy_set_header en la config de nginx.conf).",
+      "properties": {
+        "Authorization": {
+          "type": "string",
+          "description": "Header original 'Bearer <jwt>' de la solicitud del cliente. Ausente o mal formado -> 401."
+        },
+        "X-Solicitud-Id": {
+          "type": "string",
+          "format": "uuid",
+          "description": "solicitud_id extraído por Nginx del path /reportes/{solicitud_id} de la solicitud original."
+        }
+      },
+      "required": ["X-Solicitud-Id"]
+    },
+    "responses": {
+      "200": {
+        "description": "Autorizado. Nginx continúa la solicitud original y realiza X-Accel-Redirect hacia el objeto en MinIO.",
+        "headers": {
+          "X-Bucket": {"type": "string", "description": "Bucket de MinIO donde vive el objeto autorizado."},
+          "X-Object-Key": {"type": "string", "description": "Key del objeto dentro del bucket."}
+        }
+      },
+      "401": {
+        "description": "JWT ausente, mal formado, con firma inválida o expirado (credenciales invalidas, FR-002)."
+      },
+      "403": {
+        "description": "JWT válido pero el usuario (claim 'sub') no es el usuario_solicitante autorizado para ese solicitud_id (FR-003)."
+      },
+      "404": {
+        "description": "No existe un registro de ReporteAutorizacion para el solicitud_id indicado (reporte inexistente o aún no generado, FR-004)."
+      }
+    }
+  },
+  "required": ["request", "responses"]
+}
