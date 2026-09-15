@@ -19,6 +19,7 @@ from sqlalchemy.orm import Session
 from src.models.anuncio import Base
 from src.worker.events.consumer import Consumer
 from src.worker.events.publisher import Publisher
+from src.worker.idempotencia import store as idempotencia_store
 from src.worker.reportes import repository as repository_module
 from src.worker.reportes.excel_builder import construir_reporte
 
@@ -42,6 +43,23 @@ class _RepositoryAdapter:
 
     def anuncio_existe(self, anuncio_id):
         return repository_module.anuncio_existe(self._session, anuncio_id)
+
+
+class _IdempotenciaAdapter:
+    def __init__(self, session: Session):
+        self._session = session
+
+    def esta_completado(self, solicitud_id):
+        return idempotencia_store.esta_completado(self._session, solicitud_id)
+
+    def marcar_en_proceso(self, solicitud_id):
+        idempotencia_store.marcar_en_proceso(self._session, solicitud_id)
+
+    def marcar_completado(self, solicitud_id):
+        idempotencia_store.marcar_completado(self._session, solicitud_id)
+
+    def marcar_fallido(self, solicitud_id):
+        idempotencia_store.marcar_fallido(self._session, solicitud_id)
 
 
 class _ExcelBuilderAdapter:
@@ -99,17 +117,19 @@ def _publicar_solicitud(channel, payload: dict) -> None:
     )
 
 
-def _consumir_un_mensaje(engine, channel, *, timeout_s: float = 5.0):
+def _consumir_un_mensaje(engine, channel, *, timeout_s: float = 5.0, con_idempotencia: bool = False):
     """Consume exactamente un mensaje de QUEUE_GENERAR usando el Consumer real."""
 
     with Session(engine) as session:
         repository = _RepositoryAdapter(session)
         publisher = Publisher(channel, QUEUE_LISTO)
+        idempotencia = _IdempotenciaAdapter(session) if con_idempotencia else None
         consumer = Consumer(
             channel=channel,
             repository=repository,
             excel_builder=_ExcelBuilderAdapter,
             publisher=publisher,
+            idempotencia=idempotencia,
         )
         channel.basic_qos(prefetch_count=1)
         channel.basic_consume(queue=QUEUE_GENERAR, on_message_callback=consumer.procesar_mensaje)
@@ -170,3 +190,38 @@ def test_flujo_end_to_end_sin_datos_publica_reporte_listo_vacio(engine, rabbit_c
 
     assert resultado is not None
     assert resultado["estado"] == "vacio"
+
+
+def test_reintento_de_solicitud_ya_completada_no_genera_segundo_reporte_listo(
+    engine, rabbit_channel
+):
+    """User Story 3, Acceptance Scenario 2 / SC-003: reintentar un evento con
+    solicitud_id ya marcado completado no debe generar un segundo reporte.listo."""
+
+    anuncio_id = f"anuncio-{uuid.uuid4()}"
+    ahora = datetime.now(timezone.utc)
+    _insertar_evento(engine, anuncio_id, "impresion", ahora - timedelta(hours=1))
+
+    solicitud_id = str(uuid.uuid4())
+    payload = {
+        "solicitud_id": solicitud_id,
+        "anuncio_id": anuncio_id,
+        "fecha_desde": (ahora - timedelta(days=2)).isoformat(),
+        "fecha_hasta": (ahora + timedelta(days=1)).isoformat(),
+        "usuario_solicitante": "user-1",
+    }
+
+    # Primer procesamiento: exitoso, marca completado.
+    _publicar_solicitud(rabbit_channel, payload)
+    _consumir_un_mensaje(engine, rabbit_channel, con_idempotencia=True)
+    primer_resultado = _leer_mensaje_listo(rabbit_channel)
+    assert primer_resultado is not None
+    assert primer_resultado["solicitud_id"] == solicitud_id
+
+    # Reintento con el mismo solicitud_id (ya completado): no debe reprocesar
+    # ni publicar un segundo reporte.listo.
+    _publicar_solicitud(rabbit_channel, payload)
+    _consumir_un_mensaje(engine, rabbit_channel, con_idempotencia=True)
+    segundo_resultado = _leer_mensaje_listo(rabbit_channel)
+
+    assert segundo_resultado is None

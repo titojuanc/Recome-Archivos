@@ -12,6 +12,7 @@ from sqlalchemy.orm import Session
 from src.worker.config import Config
 from src.worker.events.consumer import Consumer
 from src.worker.events.publisher import Publisher
+from src.worker.idempotencia import store as idempotencia_store
 from src.worker.reportes import repository as repository_module
 
 logging.basicConfig(
@@ -37,6 +38,25 @@ class _RepositoryAdapter:
         return repository_module.anuncio_existe(self._session, anuncio_id)
 
 
+class _IdempotenciaAdapter:
+    """Adapta el modulo idempotencia/store.py a la interfaz esperada por service."""
+
+    def __init__(self, session: Session):
+        self._session = session
+
+    def esta_completado(self, solicitud_id):
+        return idempotencia_store.esta_completado(self._session, solicitud_id)
+
+    def marcar_en_proceso(self, solicitud_id):
+        idempotencia_store.marcar_en_proceso(self._session, solicitud_id)
+
+    def marcar_completado(self, solicitud_id):
+        idempotencia_store.marcar_completado(self._session, solicitud_id)
+
+    def marcar_fallido(self, solicitud_id):
+        idempotencia_store.marcar_fallido(self._session, solicitud_id)
+
+
 def main() -> None:
     config = Config.from_env()
     logger.info(
@@ -57,11 +77,13 @@ def main() -> None:
     with Session(engine) as session:
         repository = _RepositoryAdapter(session)
         publisher = Publisher(channel, config.queue_reporte_listo)
+        idempotencia = _IdempotenciaAdapter(session)
         consumer = Consumer(
             channel=channel,
             repository=repository,
             excel_builder=type("_EB", (), {"construir_reporte": staticmethod(construir_reporte)}),
             publisher=publisher,
+            idempotencia=idempotencia,
         )
 
         channel.basic_qos(prefetch_count=config.max_concurrencia)
