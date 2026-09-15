@@ -1,0 +1,43 @@
+[project]
+name = "recome-archivos-worker"
+version = "0.1.0"
+description = "Worker de generacion de reportes Excel (Recome-Archivos, feature 001-worker-reportes)"
+requires-python = ">=3.12"
+dependencies = [
+  "pika>=1.3.2",
+  "openpyxl>=3.1.2",
+  "pydantic>=2.7.0",
+  "SQLAlchemy>=2.0.30",
+  "psycopg[binary]>=3.1.19",
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest>=8.2.0",
+  "pytest-asyncio>=0.23.7",
+  "testcontainers[postgres,rabbitmq]>=4.5.1",
+  "ruff>=0.4.4",
+  "black>=24.4.2",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP"]
+
+[tool.black]
+line-length = 100
+target-version = ["py312"]
+
+[build-system]
+requires = ["setuptools>=68.0"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["src*"]
