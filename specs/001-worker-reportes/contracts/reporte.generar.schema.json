@@ -1,0 +1,33 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "reporte.generar",
+  "description": "Evento publicado por api-general para solicitar la generación de un reporte Excel de un anuncio. Este schema es una interpretación de trabajo de este repo; la fuente única de verdad vive documentada en api-general y debe sincronizarse con ella antes de implementar (Principio III de la constitution).",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["solicitud_id", "anuncio_id", "fecha_desde", "fecha_hasta", "usuario_solicitante"],
+  "properties": {
+    "solicitud_id": {
+      "type": "string",
+      "format": "uuid",
+      "description": "Identificador único de la solicitud, generado por api-general. Usado como clave de idempotencia."
+    },
+    "anuncio_id": {
+      "type": "string",
+      "description": "Identificador del anuncio sobre el cual se solicita el reporte. Debe existir en la tabla anuncio."
+    },
+    "fecha_desde": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Inicio (inclusive) del rango de fechas a incluir en el reporte."
+    },
+    "fecha_hasta": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Fin (inclusive) del rango de fechas. Debe ser posterior o igual a fecha_desde."
+    },
+    "usuario_solicitante": {
+      "type": "string",
+      "description": "Identificador del usuario que originó la solicitud, para trazabilidad. No se revalida permiso de negocio en este worker."
+    }
+  }
+}
