@@ -10,6 +10,16 @@
 
 ## User Scenarios & Testing *(mandatory)*
 
+## Clarifications
+
+### Session 2026-09-15
+
+- Q: ¿Dónde vive el dato "usuario autorizado" por reporte, consultable por el webserver en cada solicitud de descarga? → A: Se persiste en una nueva tabla propia de este repo (`reporte_autorizacion`), poblada por el worker al momento de generar el reporte, con `solicitud_id`/`anuncio_id` → `usuario_solicitante`.
+- Q: ¿Cómo verifica el webserver la identidad del solicitante sin acoplarse a un sistema de autenticación ajeno? → A: JWT firmado con secreto/clave compartida (configurado vía variable de entorno), verificado localmente y de forma stateless, sin llamada síncrona a `api-general` ni a ningún otro repo.
+- Q: ¿Qué identificador de reporte se usa en la URL de descarga para ser resistente a enumeración (FR-006)? → A: Se reusa el `solicitud_id` (UUID v4) ya generado por `001-worker-reportes`, sin crear un identificador de acceso adicional.
+- Q: ¿Qué código de respuesta debe devolver el webserver al rechazar un acceso no autorizado (FR-003) vs. un reporte inexistente (FR-004)? → A: Respuestas distinguibles: 403 (Forbidden) para usuario no autorizado, 404 (Not Found) solo para reporte inexistente/eliminado.
+- Q: ¿Qué stack/framework implementa el webserver de este repo? → A: Nginx como servidor de borde, delegando la validación de JWT y autorización (contra `reporte_autorizacion`) a un servicio ligero vía `auth_request`, y sirviendo el contenido desde MinIO vía `X-Accel-Redirect`/proxy interno (sin copiar el archivo, cumpliendo FR-007).
+
 ### User Story 1 - Descargar un reporte propio con acceso autorizado (Priority: P1)
 
 Un usuario final, habiendo recibido (a través de `api-general`, fuera de este repo) la
@@ -118,15 +128,19 @@ webserver responde de forma clara (no encontrado) sin exponer detalles internos 
 - **FR-002**: El webserver MUST rechazar toda solicitud sin credenciales válidas; MUST NOT
   existir ningún modo de acceso público/anónimo a un reporte.
 - **FR-003**: El webserver MUST rechazar solicitudes de un usuario distinto al autorizado
-  para un reporte determinado, sin exponer contenido ni metadata sensible del archivo.
-- **FR-004**: El webserver MUST responder de forma clara y sin filtrar detalles internos de
-  MinIO cuando el reporte solicitado no existe o ya fue eliminado por la política de
-  retención.
+  para un reporte determinado, respondiendo `403 Forbidden`, sin exponer contenido ni
+  metadata sensible del archivo.
+- **FR-004**: El webserver MUST responder `404 Not Found`, sin filtrar detalles internos de
+  MinIO, cuando el reporte solicitado no existe o ya fue eliminado por la política de
+  retención. `403` y `404` son respuestas distinguibles entre sí (no autorizado vs.
+  inexistente).
 - **FR-005**: El webserver MUST validar la autorización vigente en cada solicitud
   individual, no basarse en un estado de autorización cacheado de una solicitud anterior.
 - **FR-006**: El esquema de identificadores/URLs de acceso a reportes MUST ser resistente a
   enumeración (no debe ser trivial adivinar la URL de un reporte ajeno a partir de una
-  propia).
+  propia); se reutiliza el `solicitud_id` (UUID v4, ya generado por
+  `001-worker-reportes`) como identificador en la URL, sin necesidad de un token de
+  acceso adicional.
 - **FR-007**: El webserver MUST servir el contenido leyéndolo desde MinIO (el bucket
   exclusivo de este repo, ver feature `002-minio-storage`); MUST NOT mantener una copia
   independiente y potencialmente desincronizada del archivo.
@@ -146,7 +160,11 @@ webserver responde de forma clara (no encontrado) sin exponer detalles internos 
   solicitado.
 - **AutorizacionDeReporte**: representa la asociación entre un reporte generado (feature
   `001-worker-reportes` / `002-minio-storage`) y el usuario indicado como autorizado a
-  descargarlo; esta autorización se valida en cada solicitud.
+  descargarlo; esta autorización se valida en cada solicitud. Se persiste en una tabla
+  propia de este repo (`reporte_autorizacion`), poblada por el worker de
+  `001-worker-reportes` al momento de generar el reporte (a partir de
+  `usuario_solicitante` de la `SolicitudDeReporte` original), y consultada por el
+  webserver en cada solicitud de descarga.
 
 ## Success Criteria *(mandatory)*
 
@@ -165,15 +183,21 @@ webserver responde de forma clara (no encontrado) sin exponer detalles internos 
 ## Assumptions
 
 - La identidad/credenciales del usuario final para validar el acceso son provistas o
-  verificables a través de un mecanismo ya existente en el sistema (por ejemplo, un token
-  emitido en última instancia por `api-general`); este módulo no implementa un sistema de
-  autenticación de usuarios propio ni gestiona altas de usuarios.
+  verificables a través de un mecanismo ya existente en el sistema: concretamente, un
+  JWT firmado con un secreto/clave compartida (configurado vía variable de entorno),
+  emitido en última instancia por `api-general`, que este webserver valida de forma
+  local y stateless (sin llamada síncrona a ningún otro repo); este módulo no implementa
+  un sistema de autenticación de usuarios propio ni gestiona altas de usuarios.
 - La asociación reporte→usuario autorizado se origina en la información ya presente en la
   solicitud original (`SolicitudDeReporte` de la feature `001-worker-reportes`); esta
   feature no redefine ni reinterpreta quién es el usuario autorizado.
-- El mecanismo concreto (JWT, cookie de sesión, API key firmada, URL prefirmada con
-  expiración, etc.) para validar al usuario se decide en la fase de plan/implementación,
-  no en esta spec.
+- El mecanismo concreto para validar al usuario es un JWT firmado con secreto/clave
+  compartida (ver Clarifications); los detalles de implementación (librería, formato de
+  claims) se deciden en la fase de plan.
 - Este webserver no es alcanzable directamente por los frontends del sistema como puerta
   de entrada general; el flujo por el cual el usuario obtiene la URL/credencial de acceso
   pasa siempre por `api-general` (ver reglas cross-repo de la constitution).
+- La arquitectura del webserver es Nginx como servidor de borde, con un servicio ligero
+  (Python) invocado vía `auth_request` que valida el JWT y consulta `reporte_autorizacion`
+  para autorizar; el contenido se sirve desde MinIO vía `X-Accel-Redirect`/proxy interno,
+  sin que Nginx ni el servicio de autorización mantengan una copia propia del archivo.
