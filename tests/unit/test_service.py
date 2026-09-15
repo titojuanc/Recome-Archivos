@@ -86,7 +86,71 @@ def test_procesar_solicitud_marca_estado_vacio_sin_eventos(solicitud_valida):
     assert reporte.estado == EstadoReporte.VACIO
 
 
-# --- User Story 2: rechazar eventos invalidos o mal formados ---
+# --- User Story 3: idempotencia / recuperacion ante fallos transitorios ---
+
+
+def test_procesar_solicitud_no_reprocesa_si_ya_esta_completado(solicitud_valida):
+    from src.worker.reportes.service import procesar_solicitud
+
+    repo = MagicMock()
+    excel_builder = MagicMock()
+    publisher = MagicMock()
+    idempotencia = MagicMock(esta_completado=MagicMock(return_value=True))
+
+    procesar_solicitud(
+        solicitud_valida,
+        repository=repo,
+        excel_builder=excel_builder,
+        publisher=publisher,
+        idempotencia=idempotencia,
+    )
+
+    repo.obtener_eventos_anuncio.assert_not_called()
+    excel_builder.construir_reporte.assert_not_called()
+    publisher.publicar_reporte_listo.assert_not_called()
+
+
+def test_procesar_solicitud_marca_en_proceso_y_completado_en_exito(solicitud_valida):
+    from src.worker.reportes.service import procesar_solicitud
+
+    repo = MagicMock(obtener_eventos_anuncio=MagicMock(return_value=iter([MagicMock()])))
+    excel_builder = MagicMock(construir_reporte=MagicMock(return_value=b"excel-bytes"))
+    publisher = MagicMock()
+    idempotencia = MagicMock(esta_completado=MagicMock(return_value=False))
+
+    procesar_solicitud(
+        solicitud_valida,
+        repository=repo,
+        excel_builder=excel_builder,
+        publisher=publisher,
+        idempotencia=idempotencia,
+    )
+
+    idempotencia.marcar_en_proceso.assert_called_once_with(solicitud_valida.solicitud_id)
+    idempotencia.marcar_completado.assert_called_once_with(solicitud_valida.solicitud_id)
+    idempotencia.marcar_fallido.assert_not_called()
+
+
+def test_procesar_solicitud_marca_fallido_ante_excepcion_transitoria(solicitud_valida):
+    from src.worker.reportes.service import procesar_solicitud
+
+    repo = MagicMock(obtener_eventos_anuncio=MagicMock(side_effect=RuntimeError("db caida")))
+    excel_builder = MagicMock()
+    publisher = MagicMock()
+    idempotencia = MagicMock(esta_completado=MagicMock(return_value=False))
+
+    with pytest.raises(RuntimeError):
+        procesar_solicitud(
+            solicitud_valida,
+            repository=repo,
+            excel_builder=excel_builder,
+            publisher=publisher,
+            idempotencia=idempotencia,
+        )
+
+    idempotencia.marcar_en_proceso.assert_called_once_with(solicitud_valida.solicitud_id)
+    idempotencia.marcar_fallido.assert_called_once_with(solicitud_valida.solicitud_id)
+    idempotencia.marcar_completado.assert_not_called()
 
 
 def test_solicitud_de_reporte_rechaza_payload_sin_anuncio_id():
