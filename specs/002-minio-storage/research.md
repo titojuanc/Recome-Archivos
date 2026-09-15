@@ -2,6 +2,12 @@
 
 **Feature**: `002-minio-storage` | **Date**: 2026-09-15
 
+> Nota: este documento fue revisado el 2026-09-15 tras la sesión de clarify del spec
+> (ver spec.md → Clarifications). Las decisiones #4, #5 (numeración original), #6 y #7
+> reflejan las respuestas ya confirmadas (sobrescritura sin verificación previa,
+> retención 100% vía lifecycle rules, fallo de subida/integridad como falla transitoria
+> sin reintento interno propio).
+
 ## Decisiones técnicas
 
 ### 1. Cliente MinIO: SDK oficial `minio` (Python)
@@ -80,39 +86,40 @@ archivo temporal en disco.
 — viable para reportes pequeños/medianos, pero contradice la decisión de streaming ya
 tomada en `001-worker-reportes` para rangos de fechas sin límite (FR-011 de esa feature).
 
-### 6. Política de retención y su metadata (FR-007, FR-008)
+### 6. Política de retención y su metadata (FR-007, FR-008) — Clarification #2
 
-**Decisión**: Guardar la fecha de generación como metadata del propio objeto en MinIO
-(`x-amz-meta-generado-en`), y correr un job periódico (dentro del mismo proceso worker,
-usando `apscheduler`, o como un cronjob externo simple) que liste objetos por prefijo,
-filtre por esa metadata, y elimine los que superen el período de retención configurado.
+**Decisión (revisada tras clarify)**: La retención se implementa **exclusivamente**
+mediante **Lifecycle Rules nativas de MinIO** configuradas sobre el bucket/prefijo
+`reportes/`, con expiración por antigüedad. No se implementa ningún job propio de
+limpieza (`retencion.py`) en el código de este repo; la fecha de generación se guarda
+igualmente como metadata del objeto (`x-amz-meta-generado-en`) a fines informativos/de
+auditoría manual, pero no es leída por ningún proceso propio para decidir el borrado.
 
-**Rationale**: Evita mantener una tabla SQL auxiliar solo para la retención (simplicidad,
-Principio VIII), aprovechando que MinIO ya permite listar objetos con su metadata
-asociada de forma eficiente vía `list_objects` con `include_user_meta=True`.
+**Rationale**: Es la opción más simple (Principio VIII): delega completamente la lógica
+de expiración a la infraestructura ya provista por MinIO, sin mantener un scheduler
+propio, sin dependencia de `apscheduler`, y sin riesgo de que el job propio y las
+lifecycle rules entren en conflicto o dupliquen trabajo.
 
-**Alternativas consideradas**: Usar las **Lifecycle Rules** nativas de MinIO (expiración
-automática por prefijo/antigüedad) — es la opción más simple y "sin código", y se adopta
-como **preferida** si el entorno de despliegue de MinIO permite configurar lifecycle
-rules a nivel de bucket; el job propio (`retencion.py`) queda como fallback/complemento
-para casos donde se necesite lógica adicional (por ejemplo, loguear qué se eliminó, o
-evitar eliminar objetos con una descarga activa — ver FR-008, que las lifecycle rules
-nativas no resuelven por sí solas).
+**Alternativas consideradas**: Job propio en Python (`retencion.py`) como mecanismo
+primario o como fallback — descartado explícitamente por Clarification #2; se prioriza
+la simplicidad de un único mecanismo de verdad (las lifecycle rules) sobre la robustez
+adicional que daría un fallback, dado que no fue solicitado como requisito.
+
+**Impacto en Project Structure**: se elimina `src/worker/storage/retencion.py` y
+`tests/integration/test_minio_retencion.py` (verificación de borrado automático) pasa a
+ser un test de configuración de infraestructura, no de código propio — ver plan.md
+actualizado.
 
 ### 7. No interferir con descargas en curso (FR-008)
 
-**Decisión**: El job de retención no implementa un mecanismo de "lock" distribuido contra
-el webserver; en su lugar, se documenta como contrato entre features que el webserver
-(feature `003`) debe leer el objeto completo con una única llamada `get_object` que MinIO
-sirve de forma consistente aunque el objeto se elimine inmediatamente después (el objeto
-ya en tránsito de descarga no se corrompe por un `remove_object` posterior, dado el
-modelo de consistencia de MinIO/S3). El job de retención simplemente no debe ejecutarse
-con una ventana de gracia menor a la duración esperada de una descarga.
+**Decisión**: Al no existir un job propio de retención (ver decisión #6 revisada), no hay
+ningún proceso de este repo que deba coordinarse con el webserver. La garantía de FR-008
+recae enteramente en el modelo de consistencia de MinIO/S3: el webserver (feature `003`)
+lee el objeto completo con una única llamada `get_object`, y una eliminación disparada
+por la lifecycle rule nativa no corrompe una descarga ya en tránsito.
 
-**Rationale**: Introducir locking distribuido cross-feature violaría el Principio VIII
-(simplicidad) para un caso de carrera de baja probabilidad y bajo impacto (en el peor
-caso, una descarga iniciada justo antes del borrado se completa igual gracias al modelo
-de consistencia de objetos ya en transferencia).
+**Rationale**: Al eliminar el job propio, también se elimina la necesidad de cualquier
+locking distribuido cross-feature, simplificando aún más esta decisión (Principio VIII).
 
 **Alternativas consideradas**: Un mecanismo de "soft delete" con período de gracia
 adicional antes del borrado físico — se deja como posible mejora futura, no como
@@ -122,6 +129,7 @@ requisito de esta iteración, dado que no fue pedido explícitamente y añade co
 
 | Riesgo | Mitigación |
 |---|---|
-| El bucket de MinIO no tiene lifecycle rules habilitadas en todos los entornos de despliegue | `retencion.py` actúa como fallback funcional independiente de esa configuración de infraestructura |
+| El bucket de MinIO no tiene lifecycle rules habilitadas en todos los entornos de despliegue | Se documenta como prerrequisito de infraestructura en `quickstart.md`; sin lifecycle rules configuradas, la retención (SC-004) simplemente no se cumple hasta que se configure — riesgo aceptado explícitamente tras Clarification #2, sin fallback propio |
 | Reintentos concurrentes de la misma solicitud podrían intentar subir el mismo objeto en paralelo | La key determinística hace que ambas subidas converjan al mismo objeto final; se documenta como comportamiento aceptable (la última subida gana, ambas contienen el mismo contenido dado que provienen del mismo `solicitud_id` ya idempotente a nivel de generación en la feature `001`) |
 | Verificación de integridad (checksum) agrega latencia | Se mide en Phase 1/implementación contra el objetivo de performance de la feature `001` (30s); si es significativo, se puede paralelizar el cálculo de hash con la subida |
+| La verificación de integridad ahora es bloqueante (Clarification #4): un falso positivo de discrepancia de ETag bloquearía innecesariamente la publicación de `reporte.listo` | Usar el algoritmo de ETag estándar de MinIO/S3 (MD5 para objetos de una sola parte) para minimizar falsos positivos; cubierto con test de integración específico |

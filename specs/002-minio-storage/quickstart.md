@@ -94,29 +94,21 @@ Repetir el paso 4 con el **mismo** `solicitud_id` (no generar uno nuevo). Verifi
 - La key resultante es idéntica a la primera vez.
 - No se crean dos objetos distintos para la misma solicitud.
 
-## 7. Probar el job de retención (User Story 3)
+## 7. Configurar y probar la lifecycle rule de retención (User Story 3, vía `mc`)
+
+La retención se implementa **exclusivamente** como configuración nativa de MinIO (lifecycle
+rules), sin código propio (Clarification #2 del spec). Usando el cliente `mc`:
 
 ```bash
-python - << 'PY'
-from minio import Minio
-from datetime import datetime, timedelta, timezone
-
-client = Minio("localhost:9000", access_key="minioadmin", secret_key="minioadmin", secure=False)
-
-# Subir un objeto "viejo" simulando metadata de generado-en antigua
-import io
-old_key = "reportes/anuncio-999/viejo.xlsx"
-client.put_object(
-    "recome-archivos-reportes", old_key, io.BytesIO(b"viejo"), length=5,
-    metadata={"generado-en": (datetime.now(timezone.utc) - timedelta(days=60)).isoformat()},
-)
-print("Objeto viejo subido, correr retencion.py y verificar que se elimina (retención=30 días)")
-PY
+mc alias set local http://localhost:9000 minioadmin minioadmin
+mc ilm rule add local/recome-archivos-reportes --expire-days 30 --prefix "reportes/"
+mc ilm rule ls local/recome-archivos-reportes
 ```
 
-Ejecutar el job de retención (`python -m src.worker.storage.retencion --dry-run=false`) y
-confirmar que `old_key` fue eliminado, mientras que el objeto del paso 4 (reciente)
-permanece.
+Para verificar el comportamiento sin esperar 30 días reales, en un entorno de test se
+puede usar un prefijo separado con una regla de expiración corta (ej. 1 día) y objetos de
+prueba, confirmando en la consola/API de MinIO que se eliminan automáticamente tras el
+período configurado, sin ninguna intervención de este repo.
 
 ## 8. Correr la suite de tests
 

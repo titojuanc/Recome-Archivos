@@ -8,6 +8,32 @@
 
 **Input**: User description: "Persistencia de los archivos Excel generados por el worker de reportes en MinIO, incluyendo convenciones de nombrado/organización de objetos, y la referencia que se incluye en el evento reporte.listo para que el webserver pueda ubicar el archivo."
 
+## Clarifications
+
+### Session 2026-09-15
+
+- Q: Ante un reintento de la misma solicitud (US2, Scenario 1), ¿cómo debe comportarse la
+  subida si el objeto ya existe en MinIO? → A: Subir siempre sin verificar existencia
+  previa, dejando que MinIO sobrescriba el objeto existente (mismo `solicitud_id` implica
+  mismo contenido esperado; la sobrescritura es inofensiva y evita una llamada extra de
+  verificación antes de cada subida).
+- Q: ¿Cuál es el mecanismo primario de la política de retención (FR-007)? → A:
+  Únicamente lifecycle rules nativas de MinIO (configuración de infraestructura sobre el
+  bucket/prefijo), sin implementar un job de limpieza propio en el código de este repo.
+- Q: ¿Qué debe hacer el sistema si la subida a MinIO (`put_object`) falla (ej. red
+  cortada)? → A: Tratarlo como falla transitoria: no marcar la solicitud como
+  completada y propagar la excepción, delegando el reintento completo (regenerar Excel +
+  resubir) al mecanismo de idempotencia/reintento ya definido en `001-worker-reportes`
+  (User Story 3 de esa feature), sin lógica de reintento interno propia en esta capa.
+- Q: ¿La verificación de integridad post-subida (ETag vs. checksum local, FR-004) es
+  bloqueante? → A: Sí, bloqueante: si el ETag no coincide con el checksum local
+  calculado antes de subir, se trata como fallo de persistencia (misma ruta que FR-005:
+  no se marca la solicitud como completada, se propaga como falla transitoria).
+- Q: ¿Cómo se verifica que la retención (SC-004, vía lifecycle rules nativas) funciona
+  correctamente? → A: Únicamente con un test de integración que configura la lifecycle
+  rule sobre un prefijo de prueba y confirma la eliminación esperada; no se implementa
+  auditoría operativa continua en producción como parte de esta feature.
+
 ## User Scenarios & Testing *(mandatory)*
 
 ### User Story 1 - Persistir un reporte generado de forma recuperable (Priority: P1)
@@ -58,9 +84,9 @@ consistente, no dos objetos ni un objeto corrupto por escritura concurrente/parc
 **Acceptance Scenarios**:
 
 1. **Given** una solicitud cuyo reporte ya fue persistido exitosamente en MinIO, **When**
-   se reintenta la generación para la misma solicitud, **Then** el objeto resultante sigue
-   siendo único y válido (se sobrescribe de forma consistente o se detecta que ya existe y
-   no se reprocesa la subida).
+   se reintenta la generación para la misma solicitud, **Then** la subida sobrescribe el
+   objeto existente en la misma ubicación determinística, sin verificación previa de
+   existencia, resultando en un único objeto válido.
 2. **Given** una subida a MinIO que falla a mitad de camino (conexión cortada), **When** el
    sistema reintenta, **Then** no queda un objeto parcialmente escrito accesible como si
    estuviera completo.
@@ -77,16 +103,19 @@ antiguos sin afectar a los que están vigentes o en proceso de ser descargados.
 sistema entrega valor completo (Stories 1 y 2) sin esto, pero crecer sin límite no es
 sostenible a largo plazo.
 
-**Independent Test**: Se puede probar marcando reportes de prueba con fecha de generación
-antigua y verificando que un proceso de limpieza los identifica y elimina, sin tocar
-reportes recientes.
+**Independent Test**: Se puede probar configurando una lifecycle rule de expiración corta
+sobre un prefijo de prueba, subiendo un objeto con esa antigüedad simulada (o esperando el
+período configurado), y verificando que MinIO lo elimina automáticamente sin intervención
+manual, mientras un objeto reciente en el mismo prefijo permanece intacto.
 
 **Acceptance Scenarios**:
 
-1. **Given** un reporte persistido hace más tiempo que el período de retención definido,
-   **When** corre el proceso de limpieza, **Then** el objeto se elimina de MinIO.
-2. **Given** un reporte persistido dentro del período de retención, **When** corre el
-   proceso de limpieza, **Then** el objeto permanece intacto y accesible.
+1. **Given** un reporte persistido hace más tiempo que el período de retención definido
+   en la lifecycle rule del bucket/prefijo, **When** MinIO evalúa la regla (proceso
+   interno de MinIO, sin intervención de este repo), **Then** el objeto se elimina
+   automáticamente.
+2. **Given** un reporte persistido dentro del período de retención, **When** MinIO evalúa
+   la lifecycle rule, **Then** el objeto permanece intacto y accesible.
 
 ### Edge Cases
 
@@ -114,16 +143,26 @@ reportes recientes.
 - **FR-003**: El sistema MUST incluir la referencia al objeto persistido (bucket + key, o
   URL/identificador interno equivalente) en el payload del evento `reporte.listo`.
 - **FR-004**: El sistema MUST garantizar que el contenido recuperado de MinIO sea idéntico
-  al archivo originalmente generado (sin corrupción ni truncamiento).
+  al archivo originalmente generado (sin corrupción ni truncamiento), verificando de forma
+  bloqueante que el ETag devuelto por MinIO coincide con un checksum calculado localmente
+  antes de subir; si no coincide, MUST tratarse como fallo de persistencia (misma ruta que
+  FR-005).
 - **FR-005**: El sistema MUST evitar que una subida fallida o parcial quede accesible como
-  si fuera un objeto completo y válido.
+  si fuera un objeto completo y válido, apoyándose en la atomicidad nativa de la subida a
+  MinIO; ante una excepción durante la subida, el sistema MUST NOT marcar la solicitud
+  como completada y MUST propagar el fallo como una falla transitoria, delegando el
+  reintento (regeneración y resubida completa) al mecanismo de idempotencia de
+  `001-worker-reportes`, sin implementar reintentos internos propios en esta capa.
 - **FR-006**: El sistema MUST comportarse de forma idempotente ante reintentos de la misma
-  solicitud: no debe generar objetos duplicados con ubicaciones distintas para la misma
-  solicitud.
-- **FR-007**: El sistema MUST aplicar una política de retención configurable que permita
-  identificar y eliminar reportes cuya antigüedad supere el período definido.
-- **FR-008**: El proceso de limpieza por retención MUST NOT eliminar ni corromper un
-  objeto mientras está siendo servido activamente por el webserver.
+  solicitud: la subida MUST sobrescribir directamente el objeto en su ubicación
+  determinística (sin verificar existencia previa), de forma que nunca se generen objetos
+  duplicados con ubicaciones distintas para la misma solicitud.
+- **FR-007**: El sistema MUST aplicar una política de retención configurable mediante
+  lifecycle rules nativas de MinIO sobre el bucket/prefijo de reportes, sin requerir un
+  proceso de limpieza propio en el código de este repo.
+- **FR-008**: La configuración de lifecycle rules MUST evitar eliminar u corromper un
+  objeto mientras está siendo servido activamente por el webserver, apoyándose en el
+  modelo de consistencia de MinIO/S3 para descargas ya en curso (ver research.md).
 - **FR-009**: El sistema MUST soportar la persistencia de archivos de tamaño considerable
   sin requerir cargar el archivo completo en memoria en un único bloque.
 - **FR-010**: El acceso a MinIO (credenciales, bucket) MUST estar acotado a los

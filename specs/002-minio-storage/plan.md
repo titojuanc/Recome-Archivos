@@ -98,16 +98,24 @@ src/
         ├── __init__.py
         ├── minio_client.py     # Wrapper del SDK minio: conexión, config, bucket
         ├── key_builder.py       # Derivación determinística de la key a partir de solicitud_id
-        ├── persistencia.py      # Subida atómica + verificación post-subida (FR-004, FR-005)
-        └── retencion.py         # Job de limpieza por política de retención (FR-007, FR-008)
+        └── persistencia.py      # Subida (sobrescritura sin verificación previa) +
+                                  # verificación bloqueante de integridad ETag/checksum
+                                  # (FR-004, FR-005, FR-006)
+
+infra/
+└── minio/
+    └── lifecycle-rules.json     # Configuración de infraestructura: lifecycle rule de
+                                  # expiración sobre el prefijo reportes/ (FR-007, FR-008).
+                                  # No es código de aplicación: se aplica una vez vía
+                                  # `mc ilm` o equivalente, no se despliega con el worker.
 
 tests/
 ├── integration/
 │   ├── test_minio_persistencia.py   # Contra MinIO real (testcontainers)
-│   └── test_minio_retencion.py      # Contra MinIO real, incluyendo objetos "en descarga"
+│   └── test_minio_lifecycle_rules.py  # Configura la lifecycle rule sobre un prefijo de
+│                                        # prueba y verifica expiración automática (SC-004)
 └── unit/
-    ├── test_key_builder.py
-    └── test_retencion_logica.py      # Reglas de antigüedad sin depender de MinIO real
+    └── test_key_builder.py
 ```
 
 **Structure Decision**: Se agrega un nuevo submódulo `src/worker/storage/` dentro del
@@ -115,8 +123,10 @@ mismo proyecto worker de la feature `001` (no un servicio separado), reflejando 
 feature es una extensión de responsabilidad del mismo componente ("worker" en el sentido
 amplio de la constitution incluye la persistencia en MinIO como parte de generar y dejar
 disponible el reporte). Se mantiene la separación entre `key_builder.py` (lógica pura,
-testeable sin infraestructura), `persistencia.py` (I/O contra MinIO) y `retencion.py`
-(proceso de limpieza), siguiendo el mismo patrón de capas usado en `001-worker-reportes`.
+testeable sin infraestructura) y `persistencia.py` (I/O contra MinIO). La política de
+retención (FR-007, FR-008) se resuelve enteramente como configuración de infraestructura
+(`infra/minio/lifecycle-rules.json`, aplicada una única vez sobre el bucket), sin código
+de aplicación propio, tras la Clarification #2 del spec.
 
 ## Complexity Tracking
 

@@ -30,17 +30,20 @@ llena el campo `referencia_archivo` de ese contrato ya existente.
 |---|---|---|
 | `referencia_archivo` | `f"{bucket}/{key}"` o un identificador interno equivalente | Debe ser suficiente para que la feature `003-webserver-archivos` resuelva el objeto sin contexto adicional. |
 
-### PoliticaDeRetencion (configuración, no una entidad persistida por solicitud)
+### PoliticaDeRetencion (configuración de infraestructura, NO una entidad de código)
 
 | Campo | Tipo | Notas |
 |---|---|---|
-| `dias_retencion` | int | Configurable por entorno (Assumption del spec). |
-| `prefijo_alcance` | string | `reportes/` — alcance del job de limpieza, para no afectar otros posibles usos futuros del bucket. |
+| `dias_retencion` | int | Configurable a nivel de lifecycle rule de MinIO (Assumption del spec, Clarification #2). |
+| `prefijo_alcance` | string | `reportes/` — alcance de la lifecycle rule, para no afectar otros posibles usos futuros del bucket. |
 
 **Reglas de negocio**:
-- Un objeto se elimina cuando `now() - generado_en > dias_retencion`.
-- El job de limpieza (`retencion.py`) opera por prefijo y metadata, sin necesitar una
-  tabla SQL auxiliar (research.md #6).
+- Un objeto se elimina automáticamente cuando MinIO evalúa la lifecycle rule y determina
+  que `now() - generado_en > dias_retencion`. Esta evaluación es interna a MinIO; este
+  repo no implementa ningún código propio que lea `dias_retencion` en tiempo de
+  ejecución (Clarification #2).
+- La metadata `generado-en` del objeto se conserva a fines informativos/auditoría manual,
+  pero no es leída por ningún proceso propio de este repo para decidir el borrado.
 
 ## Relaciones
 
@@ -57,7 +60,8 @@ ReferenciaDeArchivo ──── se incluye en ────▶ evento reporte.li
         │
         │ (tiempo después, según PoliticaDeRetencion)
         ▼
-(eliminado por retencion.py, si supera dias_retencion y no está en descarga activa)
+(eliminado automáticamente por la lifecycle rule nativa de MinIO, si supera
+ dias_retencion; sin intervención de código propio de este repo)
 ```
 
 ## Notas de integración con `001-worker-reportes`
