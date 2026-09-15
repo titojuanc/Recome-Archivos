@@ -54,3 +54,4 @@ class Consumer:
             return
 
         ch.basic_ack(delivery_tag=method.delivery_tag)
+        logger.info("solicitud_id=%s procesada y ack-eada correctamente", solicitud.solicitud_id)
