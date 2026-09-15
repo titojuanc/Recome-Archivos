@@ -24,6 +24,13 @@ def procesar_solicitud(
     se propaga sin capturar, dejando la decision de ack/nack al consumer).
     """
 
+    if hasattr(repository, "anuncio_existe") and not repository.anuncio_existe(
+        solicitud.anuncio_id
+    ):
+        raise AnuncioInexistente(
+            f"anuncio_id={solicitud.anuncio_id!r} no existe en la tabla anuncio"
+        )
+
     eventos = list(
         repository.obtener_eventos_anuncio(
             solicitud.anuncio_id, solicitud.fecha_desde, solicitud.fecha_hasta

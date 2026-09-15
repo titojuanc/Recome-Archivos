@@ -33,6 +33,9 @@ class _RepositoryAdapter:
             self._session, anuncio_id, fecha_desde, fecha_hasta
         )
 
+    def anuncio_existe(self, anuncio_id):
+        return repository_module.anuncio_existe(self._session, anuncio_id)
+
 
 def main() -> None:
     config = Config.from_env()

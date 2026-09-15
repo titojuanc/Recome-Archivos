@@ -40,6 +40,9 @@ class _RepositoryAdapter:
             self._session, anuncio_id, fecha_desde, fecha_hasta
         )
 
+    def anuncio_existe(self, anuncio_id):
+        return repository_module.anuncio_existe(self._session, anuncio_id)
+
 
 class _ExcelBuilderAdapter:
     @staticmethod
@@ -150,6 +153,8 @@ def test_flujo_end_to_end_con_datos_publica_reporte_listo_generado(engine, rabbi
 def test_flujo_end_to_end_sin_datos_publica_reporte_listo_vacio(engine, rabbit_channel):
     anuncio_id = f"anuncio-{uuid.uuid4()}"
     ahora = datetime.now(timezone.utc)
+    # El anuncio existe (tiene al menos un registro), pero fuera del rango solicitado.
+    _insertar_evento(engine, anuncio_id, "impresion", ahora - timedelta(days=365))
 
     payload = {
         "solicitud_id": str(uuid.uuid4()),

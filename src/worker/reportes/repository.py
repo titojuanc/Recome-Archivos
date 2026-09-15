@@ -5,10 +5,17 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Iterator
 
-from sqlalchemy import or_, select
+from sqlalchemy import exists, or_, select
 from sqlalchemy.orm import Session
 
 from src.models.anuncio import Anuncio
+
+
+def anuncio_existe(session: Session, anuncio_id: str) -> bool:
+    """Verifica si existe al menos un registro para `anuncio_id` (User Story 2)."""
+
+    stmt = select(exists().where(Anuncio.anuncio_id == anuncio_id))
+    return bool(session.execute(stmt).scalar())
 
 
 def obtener_eventos_anuncio(

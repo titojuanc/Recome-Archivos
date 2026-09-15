@@ -38,6 +38,9 @@ class _RepositoryAdapter:
             self._session, anuncio_id, fecha_desde, fecha_hasta
         )
 
+    def anuncio_existe(self, anuncio_id):
+        return repository_module.anuncio_existe(self._session, anuncio_id)
+
 
 class _ExcelBuilderAdapter:
     @staticmethod
@@ -118,6 +121,36 @@ def test_mensaje_invalido_sin_anuncio_id_se_rechaza_sin_publicar_listo(engine, r
     payload = {
         "solicitud_id": str(uuid.uuid4()),
         # anuncio_id omitido intencionalmente
+        "fecha_desde": "2020-01-01T00:00:00Z",
+        "fecha_hasta": "2030-01-01T00:00:00Z",
+        "usuario_solicitante": "user-1",
+    }
+    _publicar(rabbit_channel, payload)
+    _consumir_un_mensaje(engine, rabbit_channel)
+
+    method_frame, _, body = rabbit_channel.basic_get(queue=QUEUE_LISTO, auto_ack=True)
+    assert body is None
+
+
+def test_mensaje_con_rango_de_fechas_invertido_se_rechaza_sin_publicar_listo(engine, rabbit_channel):
+    payload = {
+        "solicitud_id": str(uuid.uuid4()),
+        "anuncio_id": f"anuncio-{uuid.uuid4()}",
+        "fecha_desde": "2030-01-01T00:00:00Z",
+        "fecha_hasta": "2020-01-01T00:00:00Z",
+        "usuario_solicitante": "user-1",
+    }
+    _publicar(rabbit_channel, payload)
+    _consumir_un_mensaje(engine, rabbit_channel)
+
+    method_frame, _, body = rabbit_channel.basic_get(queue=QUEUE_LISTO, auto_ack=True)
+    assert body is None
+
+
+def test_mensaje_con_anuncio_id_inexistente_se_rechaza_sin_publicar_listo(engine, rabbit_channel):
+    payload = {
+        "solicitud_id": str(uuid.uuid4()),
+        "anuncio_id": f"anuncio-inexistente-{uuid.uuid4()}",
         "fecha_desde": "2020-01-01T00:00:00Z",
         "fecha_hasta": "2030-01-01T00:00:00Z",
         "usuario_solicitante": "user-1",
