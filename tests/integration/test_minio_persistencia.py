@@ -121,3 +121,52 @@ def test_subir_reporte_falla_si_etag_no_coincide_con_checksum_local(cliente, mon
             client=cliente,
             bucket=MINIO_BUCKET,
         )
+
+
+# --- User Story 2: reintentos idempotentes y sin objetos parciales ---
+
+
+def test_subir_reporte_reintentado_sobrescribe_sin_duplicar(cliente):
+    anuncio_id = f"anuncio-{uuid.uuid4()}"
+    solicitud_id = f"solicitud-{uuid.uuid4()}"
+    contenido = b"contenido identico en ambos intentos"
+
+    referencia1 = subir_reporte(
+        anuncio_id, solicitud_id, io.BytesIO(contenido), client=cliente, bucket=MINIO_BUCKET
+    )
+    referencia2 = subir_reporte(
+        anuncio_id, solicitud_id, io.BytesIO(contenido), client=cliente, bucket=MINIO_BUCKET
+    )
+
+    assert referencia1.key == referencia2.key
+
+    objetos = list(cliente.list_objects(MINIO_BUCKET, prefix=referencia1.key, recursive=True))
+    assert len(objetos) == 1
+
+
+def test_subir_reporte_no_deja_objeto_parcial_si_falla_la_subida(cliente, monkeypatch):
+    from minio.error import S3Error
+
+    anuncio_id = f"anuncio-{uuid.uuid4()}"
+    solicitud_id = f"solicitud-{uuid.uuid4()}"
+    contenido = b"contenido que nunca deberia quedar persistido"
+
+    def _put_object_falla(*_args, **_kwargs):
+        raise ConnectionError("corte simulado a mitad de la subida")
+
+    monkeypatch.setattr(cliente, "put_object", _put_object_falla)
+
+    with pytest.raises(ConnectionError):
+        subir_reporte(
+            anuncio_id,
+            solicitud_id,
+            io.BytesIO(contenido),
+            client=cliente,
+            bucket=MINIO_BUCKET,
+        )
+
+    from src.worker.storage.key_builder import construir_key as _construir_key
+
+    key = _construir_key(anuncio_id, solicitud_id)
+    with pytest.raises(S3Error):
+        cliente.stat_object(MINIO_BUCKET, key)
