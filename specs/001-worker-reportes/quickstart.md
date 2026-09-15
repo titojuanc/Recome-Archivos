@@ -9,9 +9,22 @@ sin depender de MinIO ni del webserver (features posteriores).
 
 - Python 3.12
 - Docker (para levantar RabbitMQ y PostgreSQL locales de prueba)
-- `pip install -r requirements.txt` (pika, openpyxl, pydantic, driver SQL, pytest, etc.)
+- Entorno virtual del repo: `python3 -m venv .venv && .venv/bin/pip install -e .[dev]`
+  (o instalar manualmente: pika, openpyxl, pydantic, SQLAlchemy, psycopg[binary],
+  pytest, pytest-asyncio)
 
 ## 1. Levantar dependencias locales
+
+**Opcion A** (recomendada): usar `docker-compose.test.yml` del repo, que expone
+RabbitMQ en el puerto `5673` y PostgreSQL en `5433` (para no chocar con instancias
+locales ya existentes en 5672/5432):
+
+```bash
+docker compose -f docker-compose.test.yml up -d
+```
+
+**Opcion B**: contenedores sueltos en los puertos por defecto (ajustar los ejemplos
+de este documento a 5672/5432 si se usa esta opcion):
 
 ```bash
 docker run -d --name rabbitmq-test -p 5672:5672 -p 15672:15672 rabbitmq:3-management
@@ -45,6 +58,17 @@ INSERT INTO anuncio (id, anuncio_id, tipo_evento, timestamp, usuario_id) VALUES
 ```
 
 ## 3. Configurar variables de entorno del worker
+
+Con `docker-compose.test.yml` (Opcion A, puertos 5673/5433):
+
+```bash
+export RABBITMQ_URL="amqp://guest:guest@localhost:5673/"
+export DATABASE_URL="postgresql://reportes:reportes@localhost:5433/reportes"
+export QUEUE_REPORTE_GENERAR="reporte.generar"
+export QUEUE_REPORTE_LISTO="reporte.listo"
+```
+
+Con contenedores en puertos por defecto (Opcion B):
 
 ```bash
 export RABBITMQ_URL="amqp://guest:guest@localhost:5672/"
