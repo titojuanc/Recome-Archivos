@@ -56,7 +56,11 @@ def subir_reporte(
     tamano = archivo.tell()
     archivo.seek(0)
 
-    resultado = client.put_object(bucket, key, archivo, length=tamano)
+    # part_size >= tamano fuerza un unico part: el ETag resultante es entonces el MD5
+    # simple del contenido (comparable con checksum_local). Sin esto, el SDK puede
+    # fragmentar en multipart y el ETag ya no es un MD5 directo del archivo completo.
+    part_size = max(tamano, 5 * 1024 * 1024)
+    resultado = client.put_object(bucket, key, archivo, length=tamano, part_size=part_size)
 
     etag = (resultado.etag or "").strip('"')
     if etag != checksum_local:

@@ -170,3 +170,23 @@ def test_subir_reporte_no_deja_objeto_parcial_si_falla_la_subida(cliente, monkey
     key = _construir_key(anuncio_id, solicitud_id)
     with pytest.raises(S3Error):
         cliente.stat_object(MINIO_BUCKET, key)
+
+
+# --- Polish: volumen ---
+
+
+def test_subir_reporte_soporta_archivo_de_volumen_alto_via_streaming(cliente):
+    """Correlacionado con SC-001 de 001-worker-reportes (~100.000 filas). Verifica que
+    `subir_reporte()` sube correctamente un archivo grande (~20 MB) sin degradar la
+    integridad, delegando el streaming real de la subida al SDK de MinIO (multipart
+    para archivos grandes)."""
+    anuncio_id = f"anuncio-{uuid.uuid4()}"
+    solicitud_id = f"solicitud-{uuid.uuid4()}"
+    contenido = os.urandom(20 * 1024 * 1024)  # ~20 MB
+
+    referencia = subir_reporte(
+        anuncio_id, solicitud_id, io.BytesIO(contenido), client=cliente, bucket=MINIO_BUCKET
+    )
+
+    stat = cliente.stat_object(referencia.bucket, referencia.key)
+    assert stat.size == len(contenido)
