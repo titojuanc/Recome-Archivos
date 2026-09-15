@@ -14,6 +14,11 @@ class Config:
     queue_reporte_listo: str
     dead_letter_exchange: str
     max_concurrencia: int
+    minio_endpoint: str
+    minio_access_key: str
+    minio_secret_key: str
+    minio_bucket: str
+    minio_secure: bool
 
     @classmethod
     def from_env(cls) -> "Config":
@@ -28,4 +33,9 @@ class Config:
                 "DEAD_LETTER_EXCHANGE", "reporte.generar.dead-letter"
             ),
             max_concurrencia=int(os.environ.get("WORKER_MAX_CONCURRENCIA", "10")),
+            minio_endpoint=os.environ.get("MINIO_ENDPOINT", "localhost:9000"),
+            minio_access_key=os.environ.get("MINIO_ACCESS_KEY", "minioadmin"),
+            minio_secret_key=os.environ.get("MINIO_SECRET_KEY", "minioadmin"),
+            minio_bucket=os.environ.get("MINIO_BUCKET", "reportes"),
+            minio_secure=os.environ.get("MINIO_SECURE", "false").lower() == "true",
         )
