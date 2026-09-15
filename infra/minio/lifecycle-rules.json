@@ -1,0 +1,5 @@
+{
+  "prefijo": "reportes/",
+  "dias_retencion": 30,
+  "descripcion": "Elimina automaticamente los objetos bajo el prefijo reportes/ tras dias_retencion dias. Aplicar con: mc ilm rule add <alias>/<bucket> --expiry-days 30 --prefix 'reportes/'. Ver quickstart.md para el procedimiento completo por entorno (dev/staging/prod)."
+}
