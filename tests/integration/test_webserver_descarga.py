@@ -15,6 +15,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
 
 from src.models.anuncio import Base
+from src.models.autorizacion import ReporteAutorizacion
 from src.worker.reportes.autorizacion_repository import registrar_autorizacion
 from src.worker.storage.minio_client import (
     aplicar_politica_lectura_interna,
@@ -111,3 +112,74 @@ def test_descarga_autorizada_repetida_sigue_funcionando(minio_cliente, db_engine
     assert resp1.status_code == 200
     assert resp2.status_code == 200
     assert resp1.content == resp2.content == contenido
+
+
+def test_descarga_sin_credenciales_devuelve_401_sin_contenido(minio_cliente, db_engine):
+    contenido = b"contenido-us2-sin-credenciales"
+    solicitud_id = _crear_reporte_autorizado(
+        minio_cliente, db_engine, usuario="usuario-1", contenido=contenido
+    )
+
+    resp = httpx.get(f"{NGINX_BASE_URL}/reportes/{solicitud_id}")
+
+    assert resp.status_code == 401
+    assert contenido not in resp.content
+
+
+def test_descarga_con_usuario_no_autorizado_devuelve_403_sin_contenido(minio_cliente, db_engine):
+    contenido = b"contenido-us2-usuario-incorrecto"
+    solicitud_id = _crear_reporte_autorizado(
+        minio_cliente, db_engine, usuario="usuario-1", contenido=contenido
+    )
+
+    resp = httpx.get(
+        f"{NGINX_BASE_URL}/reportes/{solicitud_id}",
+        headers={"Authorization": f"Bearer {_token('usuario-2')}"},
+    )
+
+    assert resp.status_code == 403
+    assert contenido not in resp.content
+
+
+def test_descarga_con_jwt_expirado_devuelve_401(minio_cliente, db_engine):
+    contenido = b"contenido-us2-jwt-expirado"
+    solicitud_id = _crear_reporte_autorizado(
+        minio_cliente, db_engine, usuario="usuario-1", contenido=contenido
+    )
+
+    resp = httpx.get(
+        f"{NGINX_BASE_URL}/reportes/{solicitud_id}",
+        headers={"Authorization": f"Bearer {_token('usuario-1', exp_delta=-10)}"},
+    )
+
+    assert resp.status_code == 401
+    assert contenido not in resp.content
+
+
+def test_descarga_solicitud_id_inexistente_devuelve_404(minio_cliente, db_engine):
+    resp = httpx.get(
+        f"{NGINX_BASE_URL}/reportes/{uuid.uuid4()}",
+        headers={"Authorization": f"Bearer {_token('usuario-1')}"},
+    )
+
+    assert resp.status_code == 404
+
+
+def test_descarga_objeto_eliminado_de_minio_no_expone_error_nativo(minio_cliente, db_engine):
+    contenido = b"contenido-us3-objeto-eliminado"
+    solicitud_id = _crear_reporte_autorizado(
+        minio_cliente, db_engine, usuario="usuario-1", contenido=contenido
+    )
+    with Session(db_engine) as session:
+        autorizacion = session.get(ReporteAutorizacion, solicitud_id)
+        bucket, key = autorizacion.bucket, autorizacion.key
+    minio_cliente.remove_object(bucket, key)
+
+    resp = httpx.get(
+        f"{NGINX_BASE_URL}/reportes/{solicitud_id}",
+        headers={"Authorization": f"Bearer {_token('usuario-1')}"},
+    )
+
+    assert resp.status_code in (404, 502)
+    assert b"<?xml" not in resp.content
+    assert b"NoSuchKey" not in resp.content

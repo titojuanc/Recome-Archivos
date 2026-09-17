@@ -38,17 +38,34 @@ def auth(
     except JWTInvalido:
         raise HTTPException(status_code=401, detail="credenciales invalidas")
 
+    # Nota: el modulo auth_request de Nginx solo trata de forma nativa los codigos
+    # 200/401/403 devueltos por el subrequest; cualquier otro codigo (ej. 404) se
+    # traduce en un 500 generico. Por eso el caso "no encontrado" tambien se expone
+    # como 403, distinguido via el header X-Auth-Reason, que Nginx usa para decidir
+    # el codigo final que ve el cliente (ver infra/nginx/nginx.conf).
     if not x_solicitud_id:
-        raise HTTPException(status_code=404, detail="solicitud_id no provisto")
+        raise HTTPException(
+            status_code=403,
+            detail="solicitud_id no provisto",
+            headers={"X-Auth-Reason": "not_found"},
+        )
 
     with SessionLocal() as session:
         autorizacion = obtener_autorizacion(session, x_solicitud_id)
 
     if autorizacion is None:
-        raise HTTPException(status_code=404, detail="reporte no encontrado")
+        raise HTTPException(
+            status_code=403,
+            detail="reporte no encontrado",
+            headers={"X-Auth-Reason": "not_found"},
+        )
 
     if autorizacion.usuario_solicitante != usuario:
-        raise HTTPException(status_code=403, detail="usuario no autorizado")
+        raise HTTPException(
+            status_code=403,
+            detail="usuario no autorizado",
+            headers={"X-Auth-Reason": "forbidden"},
+        )
 
     response.headers["X-Bucket"] = autorizacion.bucket
     response.headers["X-Object-Key"] = autorizacion.key

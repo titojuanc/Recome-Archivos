@@ -95,3 +95,71 @@ def test_auth_endpoint_200_con_jwt_valido_y_autorizado(client):
         },
         schema=schema,
     )
+
+
+def test_auth_endpoint_401_sin_authorization_header(client):
+    test_client, _session = client
+    resp = test_client.get("/auth", headers={"X-Solicitud-Id": str(uuid.uuid4())})
+    assert resp.status_code == 401
+
+
+def test_auth_endpoint_401_con_jwt_invalido_o_expirado(client):
+    test_client, _session = client
+    token_expirado = _token(sub="usuario-1", exp_delta=-10)
+    resp = test_client.get(
+        "/auth",
+        headers={
+            "Authorization": f"Bearer {token_expirado}",
+            "X-Solicitud-Id": str(uuid.uuid4()),
+        },
+    )
+    assert resp.status_code == 401
+
+    resp2 = test_client.get(
+        "/auth",
+        headers={
+            "Authorization": "Bearer token-mal-formado",
+            "X-Solicitud-Id": str(uuid.uuid4()),
+        },
+    )
+    assert resp2.status_code == 401
+
+
+def test_auth_endpoint_403_con_usuario_distinto_al_autorizado(client):
+    test_client, session = client
+    solicitud_id = str(uuid.uuid4())
+    session.add(
+        ReporteAutorizacion(
+            solicitud_id=solicitud_id,
+            anuncio_id="anuncio-123",
+            usuario_solicitante="usuario-1",
+            bucket="reportes-test",
+            key=f"reportes/anuncio-123/{solicitud_id}.xlsx",
+        )
+    )
+    session.commit()
+
+    resp = test_client.get(
+        "/auth",
+        headers={
+            "Authorization": f"Bearer {_token(sub='usuario-2')}",
+            "X-Solicitud-Id": solicitud_id,
+        },
+    )
+    assert resp.status_code == 403
+
+
+def test_auth_endpoint_404_solicitud_id_sin_autorizacion(client):
+    test_client, _session = client
+    resp = test_client.get(
+        "/auth",
+        headers={
+            "Authorization": f"Bearer {_token(sub='usuario-1')}",
+            "X-Solicitud-Id": str(uuid.uuid4()),
+        },
+    )
+    # El endpoint expone el caso "no encontrado" como 403 + X-Auth-Reason=not_found
+    # (auth_request de Nginx solo soporta nativamente 200/401/403); Nginx traduce
+    # esto a un 404 real hacia el cliente final (ver infra/nginx/nginx.conf).
+    assert resp.status_code == 403
+    assert resp.headers["X-Auth-Reason"] == "not_found"
