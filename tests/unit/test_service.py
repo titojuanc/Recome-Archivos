@@ -118,6 +118,42 @@ def test_procesar_solicitud_usa_persistencia_para_referencia_archivo(solicitud_v
     assert reporte.referencia_archivo == "reportes/reportes/anuncio-123/sid.xlsx"
 
 
+def test_procesar_solicitud_registra_autorizacion_tras_subida_exitosa(solicitud_valida):
+    from src.worker.reportes.service import procesar_solicitud
+    from src.worker.storage.persistencia import ReferenciaDeArchivo
+
+    repo = MagicMock(obtener_eventos_anuncio=MagicMock(return_value=iter([MagicMock()])))
+    excel_builder = MagicMock(construir_reporte=MagicMock(return_value=b"excel-bytes"))
+    publisher = MagicMock()
+    persistencia = MagicMock(
+        subir_reporte=MagicMock(
+            return_value=ReferenciaDeArchivo(
+                bucket="reportes-test",
+                key=f"reportes/anuncio-123/{solicitud_valida.solicitud_id}.xlsx",
+                etag="abc123",
+            )
+        )
+    )
+    autorizacion_repository = MagicMock()
+
+    procesar_solicitud(
+        solicitud_valida,
+        repository=repo,
+        excel_builder=excel_builder,
+        publisher=publisher,
+        persistencia=persistencia,
+        autorizacion_repository=autorizacion_repository,
+    )
+
+    autorizacion_repository.registrar_autorizacion.assert_called_once_with(
+        solicitud_id=solicitud_valida.solicitud_id,
+        anuncio_id=solicitud_valida.anuncio_id,
+        usuario_solicitante=solicitud_valida.usuario_solicitante,
+        bucket="reportes-test",
+        key=f"reportes/anuncio-123/{solicitud_valida.solicitud_id}.xlsx",
+    )
+
+
 # --- User Story 3: idempotencia / recuperacion ante fallos transitorios ---
 
 

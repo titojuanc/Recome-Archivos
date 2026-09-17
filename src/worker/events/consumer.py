@@ -16,12 +16,24 @@ logger = logging.getLogger("worker.consumer")
 
 
 class Consumer:
-    def __init__(self, *, channel, repository, excel_builder, publisher, idempotencia=None):
+    def __init__(
+        self,
+        *,
+        channel,
+        repository,
+        excel_builder,
+        publisher,
+        idempotencia=None,
+        persistencia=None,
+        autorizacion_repository=None,
+    ):
         self._channel = channel
         self._repository = repository
         self._excel_builder = excel_builder
         self._publisher = publisher
         self._idempotencia = idempotencia
+        self._persistencia = persistencia
+        self._autorizacion_repository = autorizacion_repository
 
     def procesar_mensaje(self, ch, method, properties, body: bytes) -> None:
         try:
@@ -39,6 +51,8 @@ class Consumer:
                 excel_builder=self._excel_builder,
                 publisher=self._publisher,
                 idempotencia=self._idempotencia,
+                persistencia=self._persistencia,
+                autorizacion_repository=self._autorizacion_repository,
             )
         except AnuncioInexistente as exc:
             logger.warning("anuncio_id inexistente, rechazando: %s", exc)

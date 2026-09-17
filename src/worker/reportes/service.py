@@ -22,6 +22,7 @@ def procesar_solicitud(
     publisher,
     idempotencia=None,
     persistencia=None,
+    autorizacion_repository=None,
 ) -> ReporteGenerado | None:
     """Orquesta el flujo completo para una `SolicitudDeReporte` ya validada.
 
@@ -80,6 +81,15 @@ def procesar_solicitud(
             logger.info(
                 "solicitud_id=%s reporte persistido en %s", sid, referencia_archivo
             )
+            if autorizacion_repository is not None:
+                autorizacion_repository.registrar_autorizacion(
+                    solicitud_id=sid,
+                    anuncio_id=solicitud.anuncio_id,
+                    usuario_solicitante=solicitud.usuario_solicitante,
+                    bucket=referencia.bucket,
+                    key=referencia.key,
+                )
+                logger.info("solicitud_id=%s autorizacion registrada", sid)
         else:
             # Placeholder hasta que 002-minio-storage este completamente integrado.
             referencia_archivo = f"reportes/{solicitud.anuncio_id}/{sid}.xlsx"
