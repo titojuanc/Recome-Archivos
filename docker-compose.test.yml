@@ -38,3 +38,28 @@ services:
       interval: 5s
       timeout: 5s
       retries: 10
+
+  auth-service-test:
+    image: python:3.12-slim
+    working_dir: /app
+    volumes:
+      - .:/app
+    environment:
+      JWT_SECRET: testing-secret
+      DATABASE_URL: postgresql+psycopg://reportes:reportes@postgres-reportes-test:5432/reportes
+    command: >
+      bash -c "pip install --quiet -e . && uvicorn src.webserver.auth_service.main:app --host 0.0.0.0 --port 8001"
+    ports:
+      - "8001:8001"
+    depends_on:
+      - postgres-reportes-test
+
+  nginx-test:
+    image: nginx:1.27
+    volumes:
+      - ./infra/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+    ports:
+      - "8080:8080"
+    depends_on:
+      - auth-service-test
+      - minio-test

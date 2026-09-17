@@ -10,6 +10,9 @@ dependencies = [
   "SQLAlchemy>=2.0.30",
   "psycopg[binary]>=3.1.19",
   "minio>=7.2.7",
+  "fastapi>=0.111.0",
+  "uvicorn>=0.29.0",
+  "PyJWT>=2.8.0",
 ]
 
 [project.optional-dependencies]
@@ -17,6 +20,7 @@ dev = [
   "pytest>=8.2.0",
   "pytest-asyncio>=0.23.7",
   "testcontainers[postgres,rabbitmq]>=4.5.1",
+  "httpx>=0.27.0",
   "ruff>=0.4.4",
   "black>=24.4.2",
 ]
