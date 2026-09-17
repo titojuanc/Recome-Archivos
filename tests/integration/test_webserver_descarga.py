@@ -183,3 +183,50 @@ def test_descarga_objeto_eliminado_de_minio_no_expone_error_nativo(minio_cliente
     assert resp.status_code in (404, 502)
     assert b"<?xml" not in resp.content
     assert b"NoSuchKey" not in resp.content
+
+
+def test_descargas_concurrentes_del_mismo_reporte_no_interfieren(minio_cliente, db_engine):
+    from concurrent.futures import ThreadPoolExecutor
+
+    contenido = b"contenido-polish-concurrencia"
+    solicitud_id = _crear_reporte_autorizado(
+        minio_cliente, db_engine, usuario="usuario-1", contenido=contenido
+    )
+
+    def _descargar(_):
+        return httpx.get(
+            f"{NGINX_BASE_URL}/reportes/{solicitud_id}",
+            headers={"Authorization": f"Bearer {_token('usuario-1')}"},
+        )
+
+    with ThreadPoolExecutor(max_workers=10) as executor:
+        resultados = list(executor.map(_descargar, range(10)))
+
+    assert all(r.status_code == 200 for r in resultados)
+    assert all(r.content == contenido for r in resultados)
+
+
+def test_minio_no_disponible_devuelve_error_transitorio_sin_exponer_contenido(
+    minio_cliente, db_engine
+):
+    contenido = b"contenido-polish-minio-caido"
+    solicitud_id = _crear_reporte_autorizado(
+        minio_cliente, db_engine, usuario="usuario-1", contenido=contenido
+    )
+
+    # Simula la indisponibilidad de MinIO: elimina el objeto justo despues de
+    # autorizarlo, forzando que el hop Nginx -> MinIO falle nativamente. El
+    # webserver debe informar un error generico (5xx/404) sin exponer contenido
+    # ni cachear la autorizacion como entregada.
+    with Session(db_engine) as session:
+        autorizacion = session.get(ReporteAutorizacion, solicitud_id)
+        bucket, key = autorizacion.bucket, autorizacion.key
+    minio_cliente.remove_object(bucket, key)
+
+    resp = httpx.get(
+        f"{NGINX_BASE_URL}/reportes/{solicitud_id}",
+        headers={"Authorization": f"Bearer {_token('usuario-1')}"},
+    )
+
+    assert resp.status_code >= 400
+    assert contenido not in resp.content

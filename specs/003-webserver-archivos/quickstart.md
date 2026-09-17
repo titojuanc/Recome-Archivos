@@ -91,6 +91,18 @@ curl -i -H "Authorization: Bearer <TOKEN_DEL_PASO_2>" \
 
 Debe responder `404`, sin exponer detalles de MinIO.
 
+> **Nota de implementación**: el módulo `auth_request` de Nginx solo reconoce de forma
+> nativa los códigos `200`/`401`/`403` en la respuesta del subrequest `/auth`; cualquier
+> otro código (como un `404` literal) termina en un `500` genérico de Nginx. Por eso
+> `/auth` expone el caso "no encontrado" como `403` + header `X-Auth-Reason: not_found`,
+> y `infra/nginx/nginx.conf` lo traduce al `404` real que ve el cliente final (ver
+> `location @denied` en el config). Asimismo, dado que Nginx proxea directamente a MinIO
+> tras la autorización (sin firmar solicitudes S3/SigV4), el bucket de test requiere una
+> política de lectura anónima aplicada vía
+> `src.worker.storage.minio_client.aplicar_politica_lectura_interna()` — segura porque
+> MinIO nunca se expone directamente al cliente, solo a través de Nginx (que ya exige
+> `auth_request`).
+
 ## 8. Correr la suite de tests
 
 ```bash
