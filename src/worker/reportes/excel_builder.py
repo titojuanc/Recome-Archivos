@@ -1,4 +1,4 @@
-"""Generacion del Excel de reporte (dos hojas: Impresiones/Clicks).
+"""Generacion del Excel de reporte (tres hojas: Impresiones/Clicks/Cerrados).
 
 Usa `openpyxl` en modo `write_only` para escritura incremental (streaming), evitando
 cargar todo el reporte en memoria (FR-009 / FR-011).
@@ -26,7 +26,7 @@ def _valor_o_nd(valor):
 
 
 def construir_reporte(eventos: Iterable) -> io.BytesIO:
-    """Construye el workbook de dos hojas a partir de un iterable de eventos.
+    """Construye el workbook de tres hojas a partir de un iterable de eventos.
 
     Cada evento debe exponer `tipo_evento`, `timestamp`, `usuario_id`.
     """
@@ -35,9 +35,11 @@ def construir_reporte(eventos: Iterable) -> io.BytesIO:
 
     hoja_impresiones = wb.create_sheet("Impresiones")
     hoja_clicks = wb.create_sheet("Clicks")
+    hoja_cerrados = wb.create_sheet("Cerrados")
 
     hoja_impresiones.append(_ENCABEZADOS)
     hoja_clicks.append(_ENCABEZADOS)
+    hoja_cerrados.append(_ENCABEZADOS)
 
     for evento in eventos:
         fila = (_valor_o_nd(evento.timestamp), _valor_o_nd(evento.usuario_id))
@@ -45,6 +47,8 @@ def construir_reporte(eventos: Iterable) -> io.BytesIO:
             hoja_impresiones.append(fila)
         elif evento.tipo_evento == "click":
             hoja_clicks.append(fila)
+        elif evento.tipo_evento == "cerrado":
+            hoja_cerrados.append(fila)
 
     buffer = io.BytesIO()
     wb.save(buffer)

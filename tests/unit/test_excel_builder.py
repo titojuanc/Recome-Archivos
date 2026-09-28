@@ -36,13 +36,13 @@ def _leer_workbook(stream: io.BytesIO):
     return openpyxl.load_workbook(stream)
 
 
-def test_genera_workbook_con_hojas_impresiones_y_clicks(eventos_mixtos):
+def test_genera_workbook_con_hojas_impresiones_clicks_y_cerrados(eventos_mixtos):
     from src.worker.reportes.excel_builder import construir_reporte
 
     buffer = construir_reporte(eventos_mixtos)
     wb = _leer_workbook(buffer)
 
-    assert wb.sheetnames == ["Impresiones", "Clicks"]
+    assert wb.sheetnames == ["Impresiones", "Clicks", "Cerrados"]
 
 
 def test_marca_campos_corruptos_como_nd(eventos_mixtos):
@@ -66,6 +66,6 @@ def test_genera_hojas_con_solo_encabezados_cuando_no_hay_datos():
     buffer = construir_reporte([])
     wb = _leer_workbook(buffer)
 
-    for nombre_hoja in ("Impresiones", "Clicks"):
+    for nombre_hoja in ("Impresiones", "Clicks", "Cerrados"):
         filas = list(wb[nombre_hoja].iter_rows(values_only=True))
         assert len(filas) == 1  # solo encabezado

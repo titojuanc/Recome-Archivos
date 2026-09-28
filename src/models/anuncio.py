@@ -19,12 +19,17 @@ class Base(DeclarativeBase):
 
 
 class Anuncio(Base):
-    """Registro individual de un evento de interaccion (impresion o click)."""
+    """Registro individual de un evento de interaccion (impresion, click o cerrado).
+
+    'cerrado' se agrego cuando `anuncio` paso a ser un popup publicitario
+    administrado por api-general (rol ADMIN_BOLUCOMPRAS): representa que
+    el usuario descarto el popup sin hacer click.
+    """
 
     __tablename__ = "anuncio"
     __table_args__ = (
         CheckConstraint(
-            "tipo_evento IN ('impresion', 'click')", name="ck_anuncio_tipo_evento"
+            "tipo_evento IN ('impresion', 'click', 'cerrado')", name="ck_anuncio_tipo_evento"
         ),
     )
 
