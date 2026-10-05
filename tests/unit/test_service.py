@@ -1,6 +1,6 @@
 """Unit tests: service.procesar_solicitud() orquesta validar->consultar->generar->publicar.
 
-Deben FALLAR hasta que exista src/worker/reportes/service.py (TDD estricto).
+El reporte ahora es consolidado (varios `anuncio_ids` a la vez).
 """
 
 from __future__ import annotations
@@ -18,17 +18,26 @@ from src.worker.events.schemas import EstadoReporte, SolicitudDeReporte
 def solicitud_valida() -> SolicitudDeReporte:
     return SolicitudDeReporte(
         solicitud_id=uuid4(),
-        anuncio_id="anuncio-123",
+        anuncio_ids=["anuncio-123", "anuncio-456"],
         fecha_desde=datetime(2020, 1, 1, tzinfo=timezone.utc),
         fecha_hasta=datetime(2030, 1, 1, tzinfo=timezone.utc),
         usuario_solicitante="user-1",
     )
 
 
+def _repo_sin_filtro_existencia(**kwargs):
+    """MagicMock de repository que no implementa `anuncio_existe` (spec
+    restringido), para que `hasattr(repository, "anuncio_existe")` sea False
+    y el service no intente filtrar nada."""
+    return MagicMock(spec=["obtener_eventos_multiples_anuncios"], **kwargs)
+
+
 def test_procesar_solicitud_orquesta_flujo_completo_y_publica(solicitud_valida):
     from src.worker.reportes.service import procesar_solicitud
 
-    repo = MagicMock(obtener_eventos_anuncio=MagicMock(return_value=iter([MagicMock()])))
+    repo = _repo_sin_filtro_existencia(
+        obtener_eventos_multiples_anuncios=MagicMock(return_value=iter([MagicMock()]))
+    )
     excel_builder = MagicMock(construir_reporte=MagicMock(return_value=b"excel-bytes"))
     publisher = MagicMock()
 
@@ -39,7 +48,7 @@ def test_procesar_solicitud_orquesta_flujo_completo_y_publica(solicitud_valida):
         publisher=publisher,
     )
 
-    repo.obtener_eventos_anuncio.assert_called_once()
+    repo.obtener_eventos_multiples_anuncios.assert_called_once()
     excel_builder.construir_reporte.assert_called_once()
     publisher.publicar_reporte_listo.assert_called_once()
 
@@ -51,7 +60,9 @@ def test_procesar_solicitud_orquesta_flujo_completo_y_publica(solicitud_valida):
 def test_procesar_solicitud_no_publica_si_consulta_falla(solicitud_valida):
     from src.worker.reportes.service import procesar_solicitud
 
-    repo = MagicMock(obtener_eventos_anuncio=MagicMock(side_effect=RuntimeError("db caida")))
+    repo = _repo_sin_filtro_existencia(
+        obtener_eventos_multiples_anuncios=MagicMock(side_effect=RuntimeError("db caida"))
+    )
     excel_builder = MagicMock()
     publisher = MagicMock()
 
@@ -70,7 +81,9 @@ def test_procesar_solicitud_no_publica_si_consulta_falla(solicitud_valida):
 def test_procesar_solicitud_marca_estado_vacio_sin_eventos(solicitud_valida):
     from src.worker.reportes.service import procesar_solicitud
 
-    repo = MagicMock(obtener_eventos_anuncio=MagicMock(return_value=iter([])))
+    repo = _repo_sin_filtro_existencia(
+        obtener_eventos_multiples_anuncios=MagicMock(return_value=iter([]))
+    )
     excel_builder = MagicMock(construir_reporte=MagicMock(return_value=b"excel-bytes"))
     publisher = MagicMock()
 
@@ -93,13 +106,15 @@ def test_procesar_solicitud_usa_persistencia_para_referencia_archivo(solicitud_v
     from src.worker.reportes.service import procesar_solicitud
     from src.worker.storage.persistencia import ReferenciaDeArchivo
 
-    repo = MagicMock(obtener_eventos_anuncio=MagicMock(return_value=iter([MagicMock()])))
+    repo = _repo_sin_filtro_existencia(
+        obtener_eventos_multiples_anuncios=MagicMock(return_value=iter([MagicMock()]))
+    )
     excel_builder = MagicMock(construir_reporte=MagicMock(return_value=b"excel-bytes"))
     publisher = MagicMock()
     persistencia = MagicMock(
         subir_reporte=MagicMock(
             return_value=ReferenciaDeArchivo(
-                bucket="reportes", key="reportes/anuncio-123/sid.xlsx", etag="abc123"
+                bucket="reportes", key=f"reportes/{solicitud_valida.solicitud_id}.xlsx", etag="abc123"
             )
         )
     )
@@ -112,24 +127,28 @@ def test_procesar_solicitud_usa_persistencia_para_referencia_archivo(solicitud_v
         persistencia=persistencia,
     )
 
-    persistencia.subir_reporte.assert_called_once()
+    persistencia.subir_reporte.assert_called_once_with(str(solicitud_valida.solicitud_id), b"excel-bytes")
     args, kwargs = publisher.publicar_reporte_listo.call_args
     reporte = kwargs.get("reporte") or args[0]
-    assert reporte.referencia_archivo == "reportes/reportes/anuncio-123/sid.xlsx"
+    assert reporte.referencia_archivo == f"reportes/reportes/{solicitud_valida.solicitud_id}.xlsx"
 
 
 def test_procesar_solicitud_registra_autorizacion_tras_subida_exitosa(solicitud_valida):
     from src.worker.reportes.service import procesar_solicitud
     from src.worker.storage.persistencia import ReferenciaDeArchivo
 
-    repo = MagicMock(obtener_eventos_anuncio=MagicMock(return_value=iter([MagicMock()])))
+    repo = MagicMock(
+        spec=["obtener_eventos_multiples_anuncios", "anuncio_existe"],
+        obtener_eventos_multiples_anuncios=MagicMock(return_value=iter([MagicMock()])),
+        anuncio_existe=MagicMock(return_value=True),
+    )
     excel_builder = MagicMock(construir_reporte=MagicMock(return_value=b"excel-bytes"))
     publisher = MagicMock()
     persistencia = MagicMock(
         subir_reporte=MagicMock(
             return_value=ReferenciaDeArchivo(
                 bucket="reportes-test",
-                key=f"reportes/anuncio-123/{solicitud_valida.solicitud_id}.xlsx",
+                key=f"reportes/{solicitud_valida.solicitud_id}.xlsx",
                 etag="abc123",
             )
         )
@@ -147,10 +166,10 @@ def test_procesar_solicitud_registra_autorizacion_tras_subida_exitosa(solicitud_
 
     autorizacion_repository.registrar_autorizacion.assert_called_once_with(
         solicitud_id=solicitud_valida.solicitud_id,
-        anuncio_id=solicitud_valida.anuncio_id,
+        anuncio_id=",".join(solicitud_valida.anuncio_ids),
         usuario_solicitante=solicitud_valida.usuario_solicitante,
         bucket="reportes-test",
-        key=f"reportes/anuncio-123/{solicitud_valida.solicitud_id}.xlsx",
+        key=f"reportes/{solicitud_valida.solicitud_id}.xlsx",
     )
 
 
@@ -160,7 +179,7 @@ def test_procesar_solicitud_registra_autorizacion_tras_subida_exitosa(solicitud_
 def test_procesar_solicitud_no_reprocesa_si_ya_esta_completado(solicitud_valida):
     from src.worker.reportes.service import procesar_solicitud
 
-    repo = MagicMock()
+    repo = _repo_sin_filtro_existencia()
     excel_builder = MagicMock()
     publisher = MagicMock()
     idempotencia = MagicMock(esta_completado=MagicMock(return_value=True))
@@ -173,7 +192,7 @@ def test_procesar_solicitud_no_reprocesa_si_ya_esta_completado(solicitud_valida)
         idempotencia=idempotencia,
     )
 
-    repo.obtener_eventos_anuncio.assert_not_called()
+    repo.obtener_eventos_multiples_anuncios.assert_not_called()
     excel_builder.construir_reporte.assert_not_called()
     publisher.publicar_reporte_listo.assert_not_called()
 
@@ -181,7 +200,9 @@ def test_procesar_solicitud_no_reprocesa_si_ya_esta_completado(solicitud_valida)
 def test_procesar_solicitud_marca_en_proceso_y_completado_en_exito(solicitud_valida):
     from src.worker.reportes.service import procesar_solicitud
 
-    repo = MagicMock(obtener_eventos_anuncio=MagicMock(return_value=iter([MagicMock()])))
+    repo = _repo_sin_filtro_existencia(
+        obtener_eventos_multiples_anuncios=MagicMock(return_value=iter([MagicMock()]))
+    )
     excel_builder = MagicMock(construir_reporte=MagicMock(return_value=b"excel-bytes"))
     publisher = MagicMock()
     idempotencia = MagicMock(esta_completado=MagicMock(return_value=False))
@@ -202,7 +223,9 @@ def test_procesar_solicitud_marca_en_proceso_y_completado_en_exito(solicitud_val
 def test_procesar_solicitud_marca_fallido_ante_excepcion_transitoria(solicitud_valida):
     from src.worker.reportes.service import procesar_solicitud
 
-    repo = MagicMock(obtener_eventos_anuncio=MagicMock(side_effect=RuntimeError("db caida")))
+    repo = _repo_sin_filtro_existencia(
+        obtener_eventos_multiples_anuncios=MagicMock(side_effect=RuntimeError("db caida"))
+    )
     excel_builder = MagicMock()
     publisher = MagicMock()
     idempotencia = MagicMock(esta_completado=MagicMock(return_value=False))
@@ -221,7 +244,7 @@ def test_procesar_solicitud_marca_fallido_ante_excepcion_transitoria(solicitud_v
     idempotencia.marcar_completado.assert_not_called()
 
 
-def test_solicitud_de_reporte_rechaza_payload_sin_anuncio_id():
+def test_solicitud_de_reporte_rechaza_payload_sin_anuncio_ids():
     from pydantic import ValidationError
 
     with pytest.raises(ValidationError):
@@ -239,17 +262,17 @@ def test_solicitud_de_reporte_rechaza_rango_de_fechas_invertido():
     with pytest.raises(ValidationError):
         SolicitudDeReporte(
             solicitud_id=uuid4(),
-            anuncio_id="anuncio-123",
+            anuncio_ids=["anuncio-123"],
             fecha_desde=datetime(2030, 1, 1, tzinfo=timezone.utc),
             fecha_hasta=datetime(2020, 1, 1, tzinfo=timezone.utc),
             usuario_solicitante="user-1",
         )
 
 
-def test_procesar_solicitud_rechaza_anuncio_id_inexistente(solicitud_valida):
+def test_procesar_solicitud_rechaza_si_ningun_anuncio_existe(solicitud_valida):
     from src.worker.reportes.service import AnuncioInexistente, procesar_solicitud
 
-    repo = MagicMock(anuncio_existe=MagicMock(return_value=False))
+    repo = MagicMock(spec=["anuncio_existe"], anuncio_existe=MagicMock(return_value=False))
     excel_builder = MagicMock()
     publisher = MagicMock()
 
@@ -265,15 +288,50 @@ def test_procesar_solicitud_rechaza_anuncio_id_inexistente(solicitud_valida):
     publisher.publicar_reporte_listo.assert_not_called()
 
 
+def test_procesar_solicitud_omite_anuncios_inexistentes_sin_abortar(solicitud_valida):
+    """Si SOLO alguno de los anuncio_ids no existe, se omite (con warning) y se
+    sigue con el resto; no debe levantar AnuncioInexistente."""
+
+    from src.worker.reportes.service import procesar_solicitud
+
+    def existe(anuncio_id):
+        return anuncio_id == "anuncio-123"
+
+    repo = MagicMock(
+        spec=["anuncio_existe", "obtener_eventos_multiples_anuncios"],
+        anuncio_existe=MagicMock(side_effect=existe),
+        obtener_eventos_multiples_anuncios=MagicMock(return_value=iter([])),
+    )
+    excel_builder = MagicMock(construir_reporte=MagicMock(return_value=b"excel-bytes"))
+    publisher = MagicMock()
+
+    procesar_solicitud(
+        solicitud_valida,
+        repository=repo,
+        excel_builder=excel_builder,
+        publisher=publisher,
+    )
+
+    repo.obtener_eventos_multiples_anuncios.assert_called_once_with(
+        ["anuncio-123"],
+        solicitud_valida.fecha_desde,
+        solicitud_valida.fecha_hasta,
+    )
+    args, kwargs = publisher.publicar_reporte_listo.call_args
+    reporte = kwargs.get("reporte") or args[0]
+    assert reporte.estado == EstadoReporte.VACIO
+
+
 def test_procesar_solicitud_no_confunde_anuncio_inexistente_con_anuncio_vacio(solicitud_valida):
-    """anuncio_id existente sin datos en el rango -> estado 'vacio' (US1 Scenario 2),
+    """anuncio_ids existentes sin datos en el rango -> estado 'vacio' (US1 Scenario 2),
     NO debe levantar AnuncioInexistente."""
 
     from src.worker.reportes.service import procesar_solicitud
 
     repo = MagicMock(
+        spec=["anuncio_existe", "obtener_eventos_multiples_anuncios"],
         anuncio_existe=MagicMock(return_value=True),
-        obtener_eventos_anuncio=MagicMock(return_value=iter([])),
+        obtener_eventos_multiples_anuncios=MagicMock(return_value=iter([])),
     )
     excel_builder = MagicMock(construir_reporte=MagicMock(return_value=b"excel-bytes"))
     publisher = MagicMock()

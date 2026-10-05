@@ -1,4 +1,9 @@
-"""Orquestacion: validar -> consultar -> generar -> publicar (User Story 1)."""
+"""Orquestacion: validar -> consultar -> generar -> publicar (User Story 1).
+
+El reporte cubre TODOS los anuncios del vendedor (no uno puntual): la
+solicitud trae `anuncio_ids` (lista), y se consolida un unico Excel con la
+actividad de todos ellos, separada prolijamente por anuncio.
+"""
 
 from __future__ import annotations
 
@@ -11,7 +16,9 @@ logger = logging.getLogger("worker.reportes.service")
 
 
 class AnuncioInexistente(Exception):
-    """Se levanta cuando el `anuncio_id` de la solicitud no existe (User Story 2)."""
+    """Se levanta cuando NINGUNO de los `anuncio_ids` de la solicitud existe
+    (User Story 2). Si solo alguno no existe, se omite con un warning y se
+    sigue con el resto (no se aborta todo el reporte por un anuncio borrado)."""
 
 
 def procesar_solicitud(
@@ -44,27 +51,33 @@ def procesar_solicitud(
         idempotencia.marcar_en_proceso(sid)
         logger.info("solicitud_id=%s marcada en_proceso", sid)
 
-    if hasattr(repository, "anuncio_existe") and not repository.anuncio_existe(
-        solicitud.anuncio_id
-    ):
-        logger.warning(
-            "solicitud_id=%s anuncio_id=%s no existe", sid, solicitud.anuncio_id
-        )
-        raise AnuncioInexistente(
-            f"anuncio_id={solicitud.anuncio_id!r} no existe en la tabla anuncio"
-        )
+    anuncio_ids_validos = list(solicitud.anuncio_ids)
+    if hasattr(repository, "anuncio_existe"):
+        anuncio_ids_validos = []
+        for anuncio_id in solicitud.anuncio_ids:
+            if repository.anuncio_existe(anuncio_id):
+                anuncio_ids_validos.append(anuncio_id)
+            else:
+                logger.warning(
+                    "solicitud_id=%s anuncio_id=%s no existe, se omite del consolidado",
+                    sid, anuncio_id,
+                )
+        if not anuncio_ids_validos:
+            raise AnuncioInexistente(
+                f"ninguno de los anuncio_ids={solicitud.anuncio_ids!r} existe en la tabla anuncio"
+            )
 
     try:
         logger.info(
-            "solicitud_id=%s consultando eventos anuncio_id=%s rango=[%s, %s]",
+            "solicitud_id=%s consultando eventos anuncio_ids=%s rango=[%s, %s]",
             sid,
-            solicitud.anuncio_id,
+            anuncio_ids_validos,
             solicitud.fecha_desde,
             solicitud.fecha_hasta,
         )
         eventos = list(
-            repository.obtener_eventos_anuncio(
-                solicitud.anuncio_id, solicitud.fecha_desde, solicitud.fecha_hasta
+            repository.obtener_eventos_multiples_anuncios(
+                anuncio_ids_validos, solicitud.fecha_desde, solicitud.fecha_hasta
             )
         )
 
@@ -73,18 +86,18 @@ def procesar_solicitud(
         estado = EstadoReporte.GENERADO if eventos else EstadoReporte.VACIO
         logger.info("solicitud_id=%s reporte generado estado=%s", sid, estado.value)
 
+        url_descarga = None
         if persistencia is not None:
-            referencia = persistencia.subir_reporte(
-                solicitud.anuncio_id, str(sid), archivo_excel
-            )
+            referencia = persistencia.subir_reporte(str(sid), archivo_excel)
             referencia_archivo = f"{referencia.bucket}/{referencia.key}"
+            url_descarga = getattr(referencia, "url_descarga", None)
             logger.info(
                 "solicitud_id=%s reporte persistido en %s", sid, referencia_archivo
             )
             if autorizacion_repository is not None:
                 autorizacion_repository.registrar_autorizacion(
                     solicitud_id=sid,
-                    anuncio_id=solicitud.anuncio_id,
+                    anuncio_id=",".join(anuncio_ids_validos),
                     usuario_solicitante=solicitud.usuario_solicitante,
                     bucket=referencia.bucket,
                     key=referencia.key,
@@ -92,13 +105,14 @@ def procesar_solicitud(
                 logger.info("solicitud_id=%s autorizacion registrada", sid)
         else:
             # Placeholder hasta que 002-minio-storage este completamente integrado.
-            referencia_archivo = f"reportes/{solicitud.anuncio_id}/{sid}.xlsx"
+            referencia_archivo = f"reportes/{sid}.xlsx"
 
         reporte = ReporteGenerado(
             solicitud_id=sid,
             referencia_archivo=referencia_archivo,
             estado=estado,
             generado_en=datetime.now(timezone.utc),
+            url_descarga=url_descarga,
         )
 
         publisher.publicar_reporte_listo(reporte)

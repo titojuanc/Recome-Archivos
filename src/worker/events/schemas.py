@@ -11,16 +11,21 @@ from datetime import datetime
 from enum import Enum
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, model_validator
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
 class SolicitudDeReporte(BaseModel):
-    """Payload entrante del evento `reporte.generar`."""
+    """Payload entrante del evento `reporte.generar`.
+
+    `anuncio_ids` reemplaza al antiguo `anuncio_id` singular: el reporte ahora
+    cubre TODA la actividad del vendedor (todos sus anuncios) en el rango de
+    fechas solicitado, no un anuncio puntual.
+    """
 
     model_config = ConfigDict(extra="forbid")
 
     solicitud_id: UUID
-    anuncio_id: str
+    anuncio_ids: list[str] = Field(min_length=1)
     fecha_desde: datetime
     fecha_hasta: datetime
     usuario_solicitante: str
@@ -46,3 +51,6 @@ class ReporteGenerado(BaseModel):
     referencia_archivo: str
     estado: EstadoReporte
     generado_en: datetime
+    url_descarga: str | None = None
+    """URL firmada (presigned) de MinIO para descargar el archivo directamente,
+    usada por api-general en e2e-local para adjuntarlo al mail de notificación."""

@@ -42,3 +42,33 @@ def obtener_eventos_anuncio(
 
     for anuncio in session.execute(stmt).yield_per(1000).scalars():
         yield anuncio
+
+
+def obtener_eventos_multiples_anuncios(
+    session: Session,
+    anuncio_ids: list[str],
+    fecha_desde: datetime,
+    fecha_hasta: datetime,
+) -> Iterator[Anuncio]:
+    """Igual que `obtener_eventos_anuncio` pero para VARIOS anuncios a la vez
+    (reporte consolidado de toda la actividad de un vendedor).
+
+    Ordena por `anuncio_id` (y luego `timestamp`) para que, al volcar los
+    eventos al Excel, los de un mismo anuncio queden contiguos/agrupados
+    (separación prolija por anuncio dentro de cada hoja).
+    """
+
+    stmt = (
+        select(Anuncio)
+        .where(
+            Anuncio.anuncio_id.in_(anuncio_ids),
+            or_(
+                Anuncio.timestamp.between(fecha_desde, fecha_hasta),
+                Anuncio.timestamp.is_(None),
+            ),
+        )
+        .order_by(Anuncio.anuncio_id, Anuncio.timestamp)
+    )
+
+    for anuncio in session.execute(stmt).yield_per(1000).scalars():
+        yield anuncio

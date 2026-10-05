@@ -32,9 +32,9 @@ class _RepositoryAdapter:
     def __init__(self, session: Session):
         self._session = session
 
-    def obtener_eventos_anuncio(self, anuncio_id, fecha_desde, fecha_hasta):
-        return repository_module.obtener_eventos_anuncio(
-            self._session, anuncio_id, fecha_desde, fecha_hasta
+    def obtener_eventos_multiples_anuncios(self, anuncio_ids, fecha_desde, fecha_hasta):
+        return repository_module.obtener_eventos_multiples_anuncios(
+            self._session, anuncio_ids, fecha_desde, fecha_hasta
         )
 
     def anuncio_existe(self, anuncio_id):
@@ -67,9 +67,9 @@ class _PersistenciaAdapter:
         self._client = client
         self._bucket = bucket
 
-    def subir_reporte(self, anuncio_id, solicitud_id, archivo):
+    def subir_reporte(self, solicitud_id, archivo):
         return persistencia_module.subir_reporte(
-            anuncio_id, solicitud_id, archivo, client=self._client, bucket=self._bucket
+            solicitud_id, archivo, client=self._client, bucket=self._bucket
         )
 
 

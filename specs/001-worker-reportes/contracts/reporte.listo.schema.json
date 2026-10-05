@@ -4,7 +4,12 @@
   "description": "Evento publicado por este worker hacia api-general cuando un reporte terminó de generarse. Este schema es una interpretación de trabajo de este repo; la fuente única de verdad vive documentada en api-general y debe sincronizarse con ella antes de implementar (Principio III de la constitution).",
   "type": "object",
   "additionalProperties": false,
-  "required": ["solicitud_id", "referencia_archivo", "estado", "generado_en"],
+  "required": [
+    "solicitud_id",
+    "referencia_archivo",
+    "estado",
+    "generado_en"
+  ],
   "properties": {
     "solicitud_id": {
       "type": "string",
@@ -17,13 +22,23 @@
     },
     "estado": {
       "type": "string",
-      "enum": ["generado", "vacio"],
+      "enum": [
+        "generado",
+        "vacio"
+      ],
       "description": "generado: el reporte tiene datos en el rango solicitado. vacio: el anuncio existe pero no tiene impresiones/clicks en el rango."
     },
     "generado_en": {
       "type": "string",
       "format": "date-time",
       "description": "Timestamp UTC de finalización de la generación del reporte."
+    },
+    "url_descarga": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "URL firmada (presigned) de MinIO para descargar el archivo directamente. Agregado para el entorno de prueba e2e-local (no hay Nginx/auth_service corriendo ahí); opcional."
     }
   }
 }

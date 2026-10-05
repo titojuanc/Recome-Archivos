@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 from dataclasses import dataclass
+from datetime import timedelta
 from typing import BinaryIO
 
 from minio import Minio
@@ -20,6 +21,7 @@ class ReferenciaDeArchivo:
     bucket: str
     key: str
     etag: str
+    url_descarga: str | None = None
 
 
 def calcular_checksum(archivo: BinaryIO) -> str:
@@ -34,7 +36,6 @@ def calcular_checksum(archivo: BinaryIO) -> str:
 
 
 def subir_reporte(
-    anuncio_id: str,
     solicitud_id: str,
     archivo: BinaryIO,
     *,
@@ -44,11 +45,11 @@ def subir_reporte(
     """Sube el archivo a MinIO en una key determinística y verifica su integridad.
 
     No realiza ningún chequeo de existencia previa (stat_object): reintentar con el
-    mismo anuncio_id/solicitud_id simplemente sobrescribe el objeto (US2, FR-006).
+    mismo solicitud_id simplemente sobrescribe el objeto (US2, FR-006).
     Si el ETag devuelto no coincide con el checksum local, se lanza
     FalloDePersistencia y la solicitud no debe considerarse completada (FR-004).
     """
-    key = construir_key(anuncio_id, solicitud_id)
+    key = construir_key(solicitud_id)
     checksum_local = calcular_checksum(archivo)
 
     archivo.seek(0)
@@ -69,4 +70,13 @@ def subir_reporte(
             f"({checksum_local}) para key={key}"
         )
 
-    return ReferenciaDeArchivo(bucket=bucket, key=key, etag=etag)
+    # URL firmada temporal (24hs) para permitir, en el entorno de prueba local,
+    # que api-general descargue el archivo y lo adjunte al mail de notificación
+    # (no hay Nginx/auth_service corriendo en e2e-local). No afecta la política
+    # de bucket privado: la firma ya incluye la autorización necesaria.
+    try:
+        url_descarga = client.presigned_get_object(bucket, key, expires=timedelta(hours=24))
+    except Exception:
+        url_descarga = None
+
+    return ReferenciaDeArchivo(bucket=bucket, key=key, etag=etag, url_descarga=url_descarga)

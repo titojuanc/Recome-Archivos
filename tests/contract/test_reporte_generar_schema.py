@@ -28,7 +28,7 @@ def schema() -> dict:
 def payload_valido() -> dict:
     return {
         "solicitud_id": "6f9619ff-8b86-d011-b42d-00cf4fc964ff",
-        "anuncio_id": "anuncio-123",
+        "anuncio_ids": ["anuncio-123", "anuncio-456"],
         "fecha_desde": "2020-01-01T00:00:00Z",
         "fecha_hasta": "2030-01-01T00:00:00Z",
         "usuario_solicitante": "user-1",
@@ -45,7 +45,7 @@ def test_solicitud_de_reporte_modelo_valida_payload_correcto(payload_valido):
     solicitud = SolicitudDeReporte(**payload_valido)
 
     assert str(solicitud.solicitud_id) == payload_valido["solicitud_id"]
-    assert solicitud.anuncio_id == payload_valido["anuncio_id"]
+    assert solicitud.anuncio_ids == payload_valido["anuncio_ids"]
     assert solicitud.usuario_solicitante == payload_valido["usuario_solicitante"]
 
 
@@ -60,12 +60,23 @@ def test_solicitud_de_reporte_rechaza_campos_extra(payload_valido):
         SolicitudDeReporte(**payload_valido)
 
 
-def test_solicitud_de_reporte_rechaza_falta_de_anuncio_id(payload_valido):
+def test_solicitud_de_reporte_rechaza_falta_de_anuncio_ids(payload_valido):
     from pydantic import ValidationError
 
     from src.worker.events.schemas import SolicitudDeReporte
 
-    del payload_valido["anuncio_id"]
+    del payload_valido["anuncio_ids"]
+
+    with pytest.raises(ValidationError):
+        SolicitudDeReporte(**payload_valido)
+
+
+def test_solicitud_de_reporte_rechaza_anuncio_ids_vacio(payload_valido):
+    from pydantic import ValidationError
+
+    from src.worker.events.schemas import SolicitudDeReporte
+
+    payload_valido["anuncio_ids"] = []
 
     with pytest.raises(ValidationError):
         SolicitudDeReporte(**payload_valido)

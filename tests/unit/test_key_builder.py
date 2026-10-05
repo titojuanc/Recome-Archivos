@@ -4,19 +4,19 @@ from src.worker.storage.key_builder import construir_key
 
 
 def test_construir_key_formato_esperado():
-    key = construir_key("anuncio-123", "solicitud-abc")
-    assert key == "reportes/anuncio-123/solicitud-abc.xlsx"
+    key = construir_key("solicitud-abc")
+    assert key == "reportes/solicitud-abc.xlsx"
 
 
 def test_construir_key_es_deterministica():
-    key1 = construir_key("anuncio-123", "solicitud-abc")
-    key2 = construir_key("anuncio-123", "solicitud-abc")
+    key1 = construir_key("solicitud-abc")
+    key2 = construir_key("solicitud-abc")
     assert key1 == key2
 
 
 def test_construir_key_estable_con_caracteres_especiales():
-    key = construir_key("anuncio con espacios/raros#1", "solicitud-abc")
+    key = construir_key("solicitud con espacios/raros#1")
     assert key.startswith("reportes/")
-    assert key.endswith("/solicitud-abc.xlsx")
+    assert key.endswith(".xlsx")
     # No debe lanzar excepcion y debe producir siempre el mismo resultado
-    assert key == construir_key("anuncio con espacios/raros#1", "solicitud-abc")
+    assert key == construir_key("solicitud con espacios/raros#1")
