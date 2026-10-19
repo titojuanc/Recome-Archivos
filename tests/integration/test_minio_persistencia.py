@@ -9,7 +9,7 @@ import uuid
 import pytest
 
 from src.worker.storage.key_builder import construir_key
-from src.worker.storage.minio_client import crear_cliente_minio, asegurar_bucket
+from src.worker.storage.minio_client import asegurar_bucket, crear_cliente_minio
 from src.worker.storage.persistencia import FalloDePersistencia, subir_reporte
 
 MINIO_ENDPOINT = os.environ.get("TEST_MINIO_ENDPOINT", "localhost:9002")

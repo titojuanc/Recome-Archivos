@@ -9,7 +9,7 @@ import os
 import time
 import uuid
 from concurrent.futures import ThreadPoolExecutor
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import pika
 import pytest
@@ -86,13 +86,13 @@ def _insertar_evento(engine, anuncio_id):
             {
                 "id": str(uuid.uuid4()),
                 "anuncio_id": anuncio_id,
-                "timestamp": datetime.now(timezone.utc) - timedelta(hours=1),
+                "timestamp": datetime.now(UTC) - timedelta(hours=1),
             },
         )
 
 
 def test_50_solicitudes_concurrentes_no_pierden_eventos(engine, rabbit_channel):
-    ahora = datetime.now(timezone.utc)
+    ahora = datetime.now(UTC)
     solicitudes = []
     for _ in range(N_SOLICITUDES):
         anuncio_id = f"anuncio-{uuid.uuid4()}"

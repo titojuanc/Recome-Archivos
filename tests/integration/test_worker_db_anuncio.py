@@ -10,7 +10,7 @@ import json
 import os
 import time
 import uuid
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from unittest.mock import patch
 
 import pika
@@ -114,7 +114,7 @@ def _consumir_un_mensaje(engine, channel, *, timeout_s: float = 5.0):
 
 def test_falla_transitoria_de_db_no_hace_ack_del_mensaje(engine, rabbit_channel):
     anuncio_id = f"anuncio-{uuid.uuid4()}"
-    ahora = datetime.now(timezone.utc)
+    ahora = datetime.now(UTC)
     payload = {
         "solicitud_id": str(uuid.uuid4()),
         "anuncio_id": anuncio_id,

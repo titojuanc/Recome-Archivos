@@ -3,8 +3,8 @@
 from __future__ import annotations
 
 from minio import Minio
-from minio.lifecycleconfig import Expiration, LifecycleConfig, Rule
 from minio.commonconfig import ENABLED, Filter
+from minio.lifecycleconfig import Expiration, LifecycleConfig, Rule
 
 
 def crear_cliente_minio(

@@ -24,7 +24,7 @@ from __future__ import annotations
 
 import io
 from collections import OrderedDict
-from typing import Iterable
+from collections.abc import Iterable
 
 import openpyxl
 from openpyxl.chart import LineChart, Reference
@@ -73,9 +73,9 @@ def construir_reporte(eventos: Iterable) -> io.BytesIO:
     ws_detalle.append(_ENCABEZADOS_DETALLE)
 
     # anuncio_id -> {tipo_evento: cantidad}
-    totales_por_anuncio: "OrderedDict[object, dict[str, int]]" = OrderedDict()
+    totales_por_anuncio: OrderedDict[object, dict[str, int]] = OrderedDict()
     # dia (ISO) o "N/D" -> {tipo_evento: cantidad}
-    actividad_por_dia: "OrderedDict[str, dict[str, int]]" = OrderedDict()
+    actividad_por_dia: OrderedDict[str, dict[str, int]] = OrderedDict()
 
     for evento in eventos:
         etiqueta = _TIPO_A_ETIQUETA.get(evento.tipo_evento, evento.tipo_evento)
@@ -106,12 +106,10 @@ def _escribir_resumen(wb, totales_por_anuncio, actividad_por_dia) -> None:
 
     # --- Tabla 1: totales por anuncio --------------------------------------
     ws.append(("Totales por anuncio",))
-    fila_header_totales = ws.max_row + 1
     ws.append(("anuncio_id", *_ETIQUETAS_COLUMNAS))
     for anuncio_id in sorted(totales_por_anuncio, key=str):
         contador = totales_por_anuncio[anuncio_id]
         ws.append((anuncio_id, *(contador.get(tipo, 0) for tipo in _TIPOS_ORDENADOS)))
-    fila_fin_totales = ws.max_row
 
     # --- Tabla 2: actividad por día (para el gráfico) -----------------------
     ws.append(())  # fila en blanco separadora

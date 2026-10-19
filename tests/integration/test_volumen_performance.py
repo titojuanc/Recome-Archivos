@@ -6,7 +6,7 @@ consume memoria excesiva) via el flujo real repository -> excel_builder.
 from __future__ import annotations
 
 import time
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import pytest
 from sqlalchemy import create_engine
@@ -24,7 +24,7 @@ N_REGISTROS = 100_000
 def engine_con_volumen():
     engine = create_engine("sqlite:///:memory:")
     Base.metadata.create_all(engine)
-    ahora = datetime.now(timezone.utc)
+    ahora = datetime.now(UTC)
     with Session(engine) as session:
         lote = []
         for i in range(N_REGISTROS):
@@ -47,7 +47,7 @@ def engine_con_volumen():
 
 
 def test_genera_reporte_de_100k_registros_en_menos_de_30_segundos(engine_con_volumen):
-    ahora = datetime.now(timezone.utc)
+    ahora = datetime.now(UTC)
 
     inicio = time.monotonic()
     with Session(engine_con_volumen) as session:

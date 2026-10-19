@@ -8,7 +8,7 @@ actividad de todos ellos, separada prolijamente por anuncio.
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from src.worker.events.schemas import EstadoReporte, ReporteGenerado, SolicitudDeReporte
 
@@ -111,7 +111,7 @@ def procesar_solicitud(
             solicitud_id=sid,
             referencia_archivo=referencia_archivo,
             estado=estado,
-            generado_en=datetime.now(timezone.utc),
+            generado_en=datetime.now(UTC),
             url_descarga=url_descarga,
         )
 

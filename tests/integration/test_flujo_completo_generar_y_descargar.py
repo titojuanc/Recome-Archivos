@@ -15,7 +15,7 @@ import json
 import os
 import time
 import uuid
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import httpx
 import jwt
@@ -208,7 +208,7 @@ def test_flujo_completo_generar_persistir_autorizar_y_descargar(
     anuncio_id = f"anuncio-{uuid.uuid4()}"
     solicitud_id = str(uuid.uuid4())
     usuario = "usuario-flujo-completo"
-    ahora = datetime.now(timezone.utc)
+    ahora = datetime.now(UTC)
     _insertar_evento(db_engine, anuncio_id, "impresion", ahora - timedelta(days=1), usuario)
     _insertar_evento(db_engine, anuncio_id, "click", ahora - timedelta(hours=12), usuario)
 
@@ -227,7 +227,9 @@ def test_flujo_completo_generar_persistir_autorizar_y_descargar(
     assert resultado is not None
     assert resultado["solicitud_id"] == solicitud_id
     assert resultado["estado"] == "generado"
-    assert resultado["referencia_archivo"] == f"{MINIO_BUCKET}/reportes/{anuncio_id}/{solicitud_id}.xlsx"
+    assert resultado["referencia_archivo"] == (
+        f"{MINIO_BUCKET}/reportes/{anuncio_id}/{solicitud_id}.xlsx"
+    )
 
     # 2. El usuario autorizado descarga el reporte real via Nginx + auth-service, con un
     #    JWT emitido para el mismo usuario_solicitante que la solicitud original.
@@ -263,7 +265,7 @@ def test_flujo_completo_sin_eventos_publica_vacio_y_sigue_siendo_descargable(
     anuncio_id = f"anuncio-{uuid.uuid4()}"
     solicitud_id = str(uuid.uuid4())
     usuario = "usuario-flujo-vacio"
-    ahora = datetime.now(timezone.utc)
+    ahora = datetime.now(UTC)
     # El anuncio existe pero el evento cae fuera del rango solicitado.
     _insertar_evento(db_engine, anuncio_id, "impresion", ahora - timedelta(days=365), usuario)
 
