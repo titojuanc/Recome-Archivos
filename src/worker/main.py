@@ -9,6 +9,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
 
 from src.worker.config import Config
+from src.worker.db_schema import asegurar_tablas_propias
 from src.worker.events.consumer import Consumer
 from src.worker.events.publisher import Publisher
 from src.worker.idempotencia import store as idempotencia_store
@@ -99,6 +100,8 @@ def main() -> None:
     )
 
     engine = create_engine(config.database_url)
+    # Tablas propias (no `anuncio`, que es de api-general/Flyway). Idempotente.
+    asegurar_tablas_propias(engine)
     connection = pika.BlockingConnection(pika.URLParameters(config.rabbitmq_url))
     channel = connection.channel()
     channel.queue_declare(queue=config.queue_reporte_generar, durable=True)
