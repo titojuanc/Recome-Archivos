@@ -5,7 +5,7 @@ El reporte ahora es consolidado (varios `anuncio_ids` a la vez).
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from unittest.mock import MagicMock
 from uuid import uuid4
 
@@ -19,8 +19,8 @@ def solicitud_valida() -> SolicitudDeReporte:
     return SolicitudDeReporte(
         solicitud_id=uuid4(),
         anuncio_ids=["anuncio-123", "anuncio-456"],
-        fecha_desde=datetime(2020, 1, 1, tzinfo=timezone.utc),
-        fecha_hasta=datetime(2030, 1, 1, tzinfo=timezone.utc),
+        fecha_desde=datetime(2020, 1, 1, tzinfo=UTC),
+        fecha_hasta=datetime(2030, 1, 1, tzinfo=UTC),
         usuario_solicitante="user-1",
     )
 
@@ -114,7 +114,9 @@ def test_procesar_solicitud_usa_persistencia_para_referencia_archivo(solicitud_v
     persistencia = MagicMock(
         subir_reporte=MagicMock(
             return_value=ReferenciaDeArchivo(
-                bucket="reportes", key=f"reportes/{solicitud_valida.solicitud_id}.xlsx", etag="abc123"
+                bucket="reportes",
+                key=f"reportes/{solicitud_valida.solicitud_id}.xlsx",
+                etag="abc123",
             )
         )
     )
@@ -127,7 +129,9 @@ def test_procesar_solicitud_usa_persistencia_para_referencia_archivo(solicitud_v
         persistencia=persistencia,
     )
 
-    persistencia.subir_reporte.assert_called_once_with(str(solicitud_valida.solicitud_id), b"excel-bytes")
+    persistencia.subir_reporte.assert_called_once_with(
+        str(solicitud_valida.solicitud_id), b"excel-bytes"
+    )
     args, kwargs = publisher.publicar_reporte_listo.call_args
     reporte = kwargs.get("reporte") or args[0]
     assert reporte.referencia_archivo == f"reportes/reportes/{solicitud_valida.solicitud_id}.xlsx"
@@ -250,8 +254,8 @@ def test_solicitud_de_reporte_rechaza_payload_sin_anuncio_ids():
     with pytest.raises(ValidationError):
         SolicitudDeReporte(
             solicitud_id=uuid4(),
-            fecha_desde=datetime(2020, 1, 1, tzinfo=timezone.utc),
-            fecha_hasta=datetime(2030, 1, 1, tzinfo=timezone.utc),
+            fecha_desde=datetime(2020, 1, 1, tzinfo=UTC),
+            fecha_hasta=datetime(2030, 1, 1, tzinfo=UTC),
             usuario_solicitante="user-1",
         )
 
@@ -263,8 +267,8 @@ def test_solicitud_de_reporte_rechaza_rango_de_fechas_invertido():
         SolicitudDeReporte(
             solicitud_id=uuid4(),
             anuncio_ids=["anuncio-123"],
-            fecha_desde=datetime(2030, 1, 1, tzinfo=timezone.utc),
-            fecha_hasta=datetime(2020, 1, 1, tzinfo=timezone.utc),
+            fecha_desde=datetime(2030, 1, 1, tzinfo=UTC),
+            fecha_hasta=datetime(2020, 1, 1, tzinfo=UTC),
             usuario_solicitante="user-1",
         )
 

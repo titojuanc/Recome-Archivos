@@ -21,6 +21,7 @@ dev = [
   "pytest-asyncio>=0.23.7",
   "testcontainers[postgres,rabbitmq]>=4.5.1",
   "httpx>=0.27.0",
+  "jsonschema>=4",
   "ruff>=0.4.4",
   "black>=24.4.2",
 ]
@@ -35,6 +36,8 @@ target-version = "py312"
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP"]
+# UP042 (StrEnum) cambiaría str()/format() de los enums de estado: no se migra.
+ignore = ["UP042"]
 
 [tool.black]
 line-length = 100

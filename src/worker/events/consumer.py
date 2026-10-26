@@ -6,7 +6,6 @@ from __future__ import annotations
 import json
 import logging
 
-import pika
 from pydantic import ValidationError
 
 from src.worker.events.schemas import SolicitudDeReporte

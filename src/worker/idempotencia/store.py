@@ -3,7 +3,7 @@ fallos transitorios. Tabla propia de este repo, no compartida (data-model.md).""
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from uuid import UUID
 
 from sqlalchemy.orm import Session
@@ -19,7 +19,7 @@ def marcar_en_proceso(session: Session, solicitud_id: UUID) -> None:
         registro = RegistroDeIdempotencia(
             solicitud_id=solicitud_id,
             estado=EstadoIdempotencia.EN_PROCESO,
-            creado_en=datetime.now(timezone.utc),
+            creado_en=datetime.now(UTC),
         )
         session.add(registro)
     else:
@@ -32,7 +32,7 @@ def marcar_completado(session: Session, solicitud_id: UUID) -> None:
     if registro is None:
         raise ValueError(f"No existe registro de idempotencia para {solicitud_id}")
     registro.estado = EstadoIdempotencia.COMPLETADO
-    registro.completado_en = datetime.now(timezone.utc)
+    registro.completado_en = datetime.now(UTC)
     session.commit()
 
 

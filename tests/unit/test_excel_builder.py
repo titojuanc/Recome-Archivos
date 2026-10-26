@@ -8,7 +8,7 @@ El reporte ahora tiene DOS hojas:
 from __future__ import annotations
 
 import io
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import openpyxl
 import pytest
@@ -26,7 +26,7 @@ class EventoFake:
 
 @pytest.fixture()
 def eventos_mixtos():
-    ahora = datetime(2026, 1, 1, tzinfo=timezone.utc)
+    ahora = datetime(2026, 1, 1, tzinfo=UTC)
     return [
         EventoFake("anuncio-1", "impresion", ahora, "user-1"),
         EventoFake("anuncio-1", "click", ahora, "user-1"),
@@ -90,7 +90,7 @@ def test_marca_campos_corruptos_como_nd_en_detalle(eventos_mixtos):
 def test_resumen_totaliza_por_anuncio():
     from src.worker.reportes.excel_builder import construir_reporte
 
-    ahora = datetime(2026, 1, 1, tzinfo=timezone.utc)
+    ahora = datetime(2026, 1, 1, tzinfo=UTC)
     eventos = [
         EventoFake("anuncio-1", "impresion", ahora, "user-1"),
         EventoFake("anuncio-1", "impresion", ahora, "user-1"),
@@ -110,8 +110,8 @@ def test_resumen_totaliza_por_anuncio():
 def test_resumen_agrega_tabla_de_actividad_por_dia():
     from src.worker.reportes.excel_builder import construir_reporte
 
-    dia1 = datetime(2026, 1, 1, 10, 0, tzinfo=timezone.utc)
-    dia2 = datetime(2026, 1, 2, 10, 0, tzinfo=timezone.utc)
+    dia1 = datetime(2026, 1, 1, 10, 0, tzinfo=UTC)
+    dia2 = datetime(2026, 1, 2, 10, 0, tzinfo=UTC)
     eventos = [
         EventoFake("anuncio-1", "impresion", dia1, "user-1"),
         EventoFake("anuncio-1", "click", dia1, "user-1"),
@@ -135,7 +135,7 @@ def test_resumen_agrega_tabla_de_actividad_por_dia():
 def test_resumen_incluye_grafico_de_actividad():
     from src.worker.reportes.excel_builder import construir_reporte
 
-    ahora = datetime(2026, 1, 1, tzinfo=timezone.utc)
+    ahora = datetime(2026, 1, 1, tzinfo=UTC)
     eventos = [EventoFake("anuncio-1", "impresion", ahora, "user-1")]
     buffer = construir_reporte(eventos)
     wb = _leer_workbook(buffer)
@@ -150,7 +150,7 @@ def test_grafico_tiene_marcadores_visibles_incluso_con_un_solo_dia():
     ni punto), porque una línea necesita al menos 2 puntos para trazarse."""
     from src.worker.reportes.excel_builder import construir_reporte
 
-    ahora = datetime(2026, 1, 1, tzinfo=timezone.utc)
+    ahora = datetime(2026, 1, 1, tzinfo=UTC)
     eventos = [EventoFake("anuncio-1", "impresion", ahora, "user-1")]
     buffer = construir_reporte(eventos)
     wb = _leer_workbook(buffer)

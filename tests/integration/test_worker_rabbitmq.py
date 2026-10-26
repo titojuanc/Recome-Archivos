@@ -6,7 +6,7 @@ import json
 import os
 import time
 import uuid
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import pika
 import pytest
@@ -101,7 +101,7 @@ def _consumir_un_mensaje(engine, channel, *, timeout_s: float = 5.0):
 
 def test_mensaje_valido_se_hace_ack_y_no_queda_en_la_cola(engine, rabbit_channel):
     anuncio_id = f"anuncio-{uuid.uuid4()}"
-    ahora = datetime.now(timezone.utc)
+    ahora = datetime.now(UTC)
     payload = {
         "solicitud_id": str(uuid.uuid4()),
         "anuncio_id": anuncio_id,
@@ -132,7 +132,9 @@ def test_mensaje_invalido_sin_anuncio_id_se_rechaza_sin_publicar_listo(engine, r
     assert body is None
 
 
-def test_mensaje_con_rango_de_fechas_invertido_se_rechaza_sin_publicar_listo(engine, rabbit_channel):
+def test_mensaje_con_rango_de_fechas_invertido_se_rechaza_sin_publicar_listo(
+    engine, rabbit_channel
+):
     payload = {
         "solicitud_id": str(uuid.uuid4()),
         "anuncio_id": f"anuncio-{uuid.uuid4()}",

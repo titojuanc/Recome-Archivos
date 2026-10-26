@@ -9,7 +9,7 @@ import json
 import os
 import time
 import uuid
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import pika
 import pytest
@@ -117,7 +117,9 @@ def _publicar_solicitud(channel, payload: dict) -> None:
     )
 
 
-def _consumir_un_mensaje(engine, channel, *, timeout_s: float = 5.0, con_idempotencia: bool = False):
+def _consumir_un_mensaje(
+    engine, channel, *, timeout_s: float = 5.0, con_idempotencia: bool = False
+):
     """Consume exactamente un mensaje de QUEUE_GENERAR usando el Consumer real."""
 
     with Session(engine) as session:
@@ -149,7 +151,7 @@ def _leer_mensaje_listo(channel) -> dict | None:
 
 def test_flujo_end_to_end_con_datos_publica_reporte_listo_generado(engine, rabbit_channel):
     anuncio_id = f"anuncio-{uuid.uuid4()}"
-    ahora = datetime.now(timezone.utc)
+    ahora = datetime.now(UTC)
     _insertar_evento(engine, anuncio_id, "impresion", ahora - timedelta(days=1))
     _insertar_evento(engine, anuncio_id, "click", ahora - timedelta(hours=12))
 
@@ -172,7 +174,7 @@ def test_flujo_end_to_end_con_datos_publica_reporte_listo_generado(engine, rabbi
 
 def test_flujo_end_to_end_sin_datos_publica_reporte_listo_vacio(engine, rabbit_channel):
     anuncio_id = f"anuncio-{uuid.uuid4()}"
-    ahora = datetime.now(timezone.utc)
+    ahora = datetime.now(UTC)
     # El anuncio existe (tiene al menos un registro), pero fuera del rango solicitado.
     _insertar_evento(engine, anuncio_id, "impresion", ahora - timedelta(days=365))
 
@@ -199,7 +201,7 @@ def test_reintento_de_solicitud_ya_completada_no_genera_segundo_reporte_listo(
     solicitud_id ya marcado completado no debe generar un segundo reporte.listo."""
 
     anuncio_id = f"anuncio-{uuid.uuid4()}"
-    ahora = datetime.now(timezone.utc)
+    ahora = datetime.now(UTC)
     _insertar_evento(engine, anuncio_id, "impresion", ahora - timedelta(hours=1))
 
     solicitud_id = str(uuid.uuid4())

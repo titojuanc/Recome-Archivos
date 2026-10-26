@@ -12,7 +12,7 @@ from src.worker.events.schemas import ReporteGenerado
 class Publisher:
     """Publica `ReporteGenerado` en la cola configurada."""
 
-    def __init__(self, channel: "pika.adapters.blocking_connection.BlockingChannel", queue: str):
+    def __init__(self, channel: pika.adapters.blocking_connection.BlockingChannel, queue: str):
         self._channel = channel
         self._queue = queue
 

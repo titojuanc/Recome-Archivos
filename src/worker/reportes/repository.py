@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterator
 from datetime import datetime
-from typing import Iterator
 
 from sqlalchemy import exists, or_, select
 from sqlalchemy.orm import Session
@@ -40,8 +40,7 @@ def obtener_eventos_anuncio(
         ),
     )
 
-    for anuncio in session.execute(stmt).yield_per(1000).scalars():
-        yield anuncio
+    yield from session.execute(stmt).yield_per(1000).scalars()
 
 
 def obtener_eventos_multiples_anuncios(
@@ -70,5 +69,4 @@ def obtener_eventos_multiples_anuncios(
         .order_by(Anuncio.anuncio_id, Anuncio.timestamp)
     )
 
-    for anuncio in session.execute(stmt).yield_per(1000).scalars():
-        yield anuncio
+    yield from session.execute(stmt).yield_per(1000).scalars()

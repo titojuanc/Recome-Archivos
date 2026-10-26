@@ -21,7 +21,7 @@ class Config:
     minio_secure: bool
 
     @classmethod
-    def from_env(cls) -> "Config":
+    def from_env(cls) -> Config:
         return cls(
             rabbitmq_url=os.environ.get("RABBITMQ_URL", "amqp://guest:guest@localhost:5672/"),
             database_url=os.environ.get(

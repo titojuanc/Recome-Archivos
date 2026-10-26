@@ -5,7 +5,7 @@ Deben FALLAR hasta que exista src/worker/reportes/repository.py (TDD estricto).
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import pytest
 from sqlalchemy import create_engine
@@ -22,7 +22,7 @@ def sesion():
     engine = create_engine("sqlite:///:memory:")
     Base.metadata.create_all(engine)
     with Session(engine) as session:
-        ahora = datetime.now(timezone.utc)
+        ahora = datetime.now(UTC)
         registros = [
             Anuncio(
                 anuncio_id=ANUNCIO_ID,
@@ -66,7 +66,7 @@ def sesion():
 def test_filtra_por_anuncio_id_y_rango_e_incluye_timestamps_nulos(sesion):
     from src.worker.reportes.repository import obtener_eventos_anuncio
 
-    ahora = datetime.now(timezone.utc)
+    ahora = datetime.now(UTC)
     desde = ahora - timedelta(days=10)
     hasta = ahora
 
@@ -83,7 +83,7 @@ def test_filtra_por_anuncio_id_y_rango_e_incluye_timestamps_nulos(sesion):
 def test_no_incluye_registros_de_otro_anuncio_id(sesion):
     from src.worker.reportes.repository import obtener_eventos_anuncio
 
-    ahora = datetime.now(timezone.utc)
+    ahora = datetime.now(UTC)
     resultados = list(
         obtener_eventos_anuncio(sesion, ANUNCIO_ID, ahora - timedelta(days=10), ahora)
     )
